@@ -1,11 +1,12 @@
 {
   "name": "asas-de-ferro",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Asas de Ferro TRPG website and codex",
   "scripts": {
-    "dev": "netlify dev --port 8888",
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/assets-index.mjs",
+    "assets:scan": "node scripts/assets-index.mjs",
     "test": "node --test",
     "hash-password": "node scripts/hash-password.mjs"
   },

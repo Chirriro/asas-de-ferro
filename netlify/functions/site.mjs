@@ -1,11 +1,18 @@
 import { getStore } from '@netlify/blobs';
-import { cookieName, getCookie, sameOrigin, verifySession } from './core.mjs';
+import { cookieName, getCookie, sameOrigin, verifySession, validAssetPath } from './core.mjs';
 
-export const config = { path: ['/system/site-config', '/system/site-upload/:kind', '/site-media/:kind'] };
+export const config = { path: ['/system/site-config', '/system/site-pages', '/system/site-upload/:kind', '/site-media/:kind'] };
 
 const settingsStore = () => getStore('asas-de-ferro-site');
-export const sceneNames = ['home', 'codex', 'characters', 'world', 'admin'];
-const sceneKinds = ['background', 'background-codex', 'background-characters', 'background-world', 'background-admin'];
+export const sitePages = Object.freeze([
+  { id: 'home', label: 'Menu principal', path: '/', backgroundKind: 'background' },
+  { id: 'codex', label: 'Códice', path: '/codice', backgroundKind: 'background-codex' },
+  { id: 'characters', label: 'Personagens', path: '/personagens', backgroundKind: 'background-characters' },
+  { id: 'world', label: 'Mundo', path: '/mundo', backgroundKind: 'background-world' },
+  { id: 'admin', label: 'Administração', path: '/admin', backgroundKind: 'background-admin' },
+]);
+export const sceneNames = sitePages.map(page => page.id);
+const sceneKinds = sitePages.map(page => page.backgroundKind);
 const assetKinds = new Set(['logo', 'icon', 'social', ...sceneKinds]);
 export const defaultBackgroundEffects = Object.freeze(Object.fromEntries(
   sceneNames.map(scene => [scene, { overlay: scene === 'home' ? 40 : 52, vignette: scene === 'home' ? 55 : 45 }]),
@@ -76,6 +83,14 @@ export function normalizeSettings(input, prior) {
       return [scene, { overlay: fx.overlay, vignette: fx.vignette }];
     }));
   }
+  if (input.assets !== undefined) {
+    if (!input.assets || typeof input.assets !== 'object' || Array.isArray(input.assets)) throw new Error('Biblioteca de imagens inválida.');
+    for (const kind of assetKinds) {
+      const path = input.assets[kind] ?? '';
+      if (!validAssetPath(path) && !(typeof path === 'number' && path === prior.assets?.[kind])) throw new Error('Caminho de imagem inválido.');
+      next.assets[kind] = path;
+    }
+  }
   if (input.particleLayers !== undefined) {
     if (!Array.isArray(input.particleLayers) || input.particleLayers.length > 8) throw new Error('Camadas de partículas inválidas.');
     const ids = new Set();
@@ -135,6 +150,7 @@ export default async function site(request) {
       if (!data || !type) return new Response('Not found', { status: 404 });
       return new Response(data, { headers: { 'content-type': type, 'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff', 'content-disposition': 'inline' } });
     }
+    if (url.pathname === '/system/site-pages' && method === 'GET') return responseJson({ pages: sitePages });
     if (url.pathname === '/system/site-config') {
       if (method === 'GET') return responseJson({ settings: await getSiteSettings(store) });
       if (method !== 'PUT') return responseJson({ error: 'Método não permitido.' }, 405);

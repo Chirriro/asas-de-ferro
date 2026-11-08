@@ -1,0 +1,23 @@
+{
+  "folders": [
+    "",
+    "backgrounds",
+    "banners",
+    "characters",
+    "logos"
+  ],
+  "files": [
+    {
+      "name": "fabula_ultima_trans.png",
+      "folder": "logos",
+      "url": "/assets/logos/fabula_ultima_trans.png",
+      "bytes": 221143
+    },
+    {
+      "name": "fabula_ultima.png",
+      "folder": "logos",
+      "url": "/assets/logos/fabula_ultima.png",
+      "bytes": 184964
+    }
+  ]
+}

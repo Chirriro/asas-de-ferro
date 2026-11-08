@@ -7,6 +7,7 @@ const state = {
   tag: '',
   settings: { siteName: 'Asas de Ferro', tagline: 'Um mundo entre os céus', description: 'Explore Asas de Ferro', shareTitle: '', shareDescription: '', siteUrl: '', themeColor: '#101b27', assets: { logo: 0, background: 0, icon: 0, social: 0, 'background-codex': 0, 'background-characters': 0, 'background-world': 0, 'background-admin': 0 }, backgroundEffects: {}, particleLayers: [] },
   tagCatalog: [],
+  pages: [],
 };
 
 const knowledgeLevels = [
@@ -15,6 +16,7 @@ const knowledgeLevels = [
   ['professional', 'Conhecimento Profissional'],
 ];
 
+let stopMenuWave = () => {};
 const menuOptions = [
   { name: 'CÓDICE', url: '/codice' },
   { name: 'PERSONAGENS', url: null },
@@ -133,23 +135,178 @@ async function siteRequest(path, options = {}) {
   return data;
 }
 
+function resolveAssetUrl(kind, value) {
+  return typeof value === 'string' && value.startsWith('/assets/') ? value
+    : typeof value === 'number' && value > 0 ? `/site-media/${kind}?v=${value}` : '';
+}
+function assetUrl(kind) { return resolveAssetUrl(kind, state.settings.assets?.[kind]); }
+
+function openAssetLibrary(onPick) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'asset-dialog';
+  dialog.innerHTML = `<div class="asset-library"><header><h2>Biblioteca de arquivos</h2><button type="button" class="ui-button secondary" data-close>FECHAR</button></header>
+    <div class="asset-library-main"><nav class="asset-folders" aria-label="Pastas da biblioteca"></nav>
+      <section class="asset-thumbnails" aria-label="Imagens da pasta"></section></div></div>`;
+  document.body.append(dialog);
+  dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  dialog.querySelector('[data-close]').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+  dialog.showModal();
+  const tree = dialog.querySelector('.asset-folders');
+  const list = dialog.querySelector('.asset-thumbnails');
+  fetch('/assets/library.json', { cache: 'no-store' }).then(response => {
+    if (!response.ok) throw new Error('Biblioteca de imagens indisponível. Execute npm run assets:scan.');
+    return response.json();
+  }).then(data => {
+    const folders = data.folders || [''];
+    const files = (data.files || []).filter(file => typeof file.url === 'string' && file.url.startsWith('/assets/'));
+    let selected = '';
+    const draw = () => {
+      tree.innerHTML = folders.map(folder => {
+        const name = folder ? `${'　'.repeat(folder.split('/').length - 1)}${folder.split('/').at(-1)}` : 'Todas as pastas';
+        return `<button type="button" data-folder="${escapeHtml(folder)}" class="${selected === folder ? 'active' : ''}">${escapeHtml(name)}</button>`;
+      }).join('');
+      const chosen = files.filter(file => !selected || file.folder === selected || file.folder.startsWith(selected + '/'));
+      list.innerHTML = chosen.length ? chosen.map(file => `<button type="button" class="asset-tile" data-image="${escapeHtml(file.url)}">
+        <img draggable="false" loading="lazy" src="${escapeHtml(file.url)}" alt=""><span>${escapeHtml(file.name)}</span>
+        <small>${escapeHtml(file.folder || 'Pasta principal')}</small></button>`).join('')
+        : '<p>Nenhuma imagem nesta pasta. Adicione arquivos em public/assets/ e aguarde o índice atualizar.</p>';
+    };
+    tree.addEventListener('click', event => {
+      const folder = event.target.closest('[data-folder]');
+      if (folder) { selected = folder.dataset.folder; draw(); }
+    });
+    list.addEventListener('click', event => {
+      const file = event.target.closest('[data-image]');
+      if (file) { onPick(file.dataset.image); dialog.close(); }
+    });
+    draw();
+  }).catch(error => { list.textContent = error.message; });
+}
+
+function openBannerViewer(url, title) {
+  const dialog = document.createElement('dialog');
+  dialog.className = 'image-viewer';
+  const img = document.createElement('img');
+  img.src = url;
+  img.alt = title;
+  img.draggable = false;
+  const close = document.createElement('button');
+  close.className = 'ui-button secondary';
+  close.type = 'button';
+  close.textContent = 'FECHAR ×';
+  close.addEventListener('click', () => dialog.close());
+  dialog.append(close, img);
+  dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+  dialog.addEventListener('close', () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+function attachMenuWaves(items) {
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let frame = 0;
+  const paint = now => {
+    const active = items.find(item => item.classList.contains('is-selected'));
+    const canvas = active?.querySelector('canvas.menu-wave-canvas');
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        const width = Math.floor(rect.width * pixelRatio);
+        const height = Math.floor(rect.height * pixelRatio);
+        if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, width, height);
+        ctx.save();
+        ctx.scale(pixelRatio, pixelRatio);
+        ctx.globalCompositeOperation = 'screen';
+        const w = rect.width, h = rect.height;
+        const elapsed = reduce ? 0 : now * .00034;
+        for (let index = 0; index < 23; index++) {
+          const blend = index / 22;
+          ctx.beginPath();
+          const gradient = ctx.createLinearGradient(0, 0, w, 0);
+          const alpha = (.12 + (1 - Math.abs(blend - .5) * 1.5) * .4).toFixed(3);
+          gradient.addColorStop(0, 'rgba(63, 178, 197, 0)');
+          gradient.addColorStop(.2, `rgba(90, 217, 226, ${alpha})`);
+          gradient.addColorStop(.64, `rgba(179, 255, 232, ${alpha})`);
+          gradient.addColorStop(1, 'rgba(132, 225, 237, 0)');
+          ctx.strokeStyle = gradient;
+          ctx.lineWidth = index % 6 === 0 ? 1.05 : .55;
+          ctx.shadowColor = 'rgba(121,250,245,.8)';
+          ctx.shadowBlur = index % 6 === 0 ? 8 : 3;
+          for (let x = 0; x <= w + 4; x += 4) {
+            const u = x / w;
+            const envelope = Math.pow(Math.sin(Math.PI * u), .9);
+            const wave = Math.sin(u * Math.PI * 3 + elapsed + index * .21) * 11;
+            const modulation = Math.sin(u * Math.PI * 5 - elapsed * .6 + index * .13) * 4;
+            const y = h * .5 + (index - 11) * 1.35 + (wave + modulation) * envelope;
+            x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+    frame = requestAnimationFrame(paint);
+  };
+  frame = requestAnimationFrame(paint);
+  stopMenuWave = () => { cancelAnimationFrame(frame); stopMenuWave = () => {}; };
+}
+
 function applySiteIdentity() {
   const s = state.settings;
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', s.themeColor);
   const existing = document.querySelector('link[rel="icon"]');
-  if (s.assets.icon) {
+  if (assetUrl('icon')) {
     const icon = existing || document.createElement('link');
     icon.rel = 'icon';
-    icon.href = `/site-media/icon?v=${s.assets.icon}`;
+    icon.href = assetUrl('icon');
     if (!existing) document.head.append(icon);
   } else existing?.remove();
 }
 
-function navigate(path) {
-  if (location.pathname + location.search !== path) history.pushState({}, '', path);
-  window.scrollTo({ top: 0, behavior: 'instant' });
-  route();
+let transitionId = 0;
+
+function captureCurrentPage() {
+  const current = app.firstElementChild;
+  if (!current) return null;
+  const previous = document.createElement('div');
+  previous.className = 'page-outgoing';
+  previous.setAttribute('aria-hidden', 'true');
+  previous.inert = true;
+  previous.style.top = `${-window.scrollY}px`;
+  const snapshot = current.cloneNode(true);
+  snapshot.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
+  previous.append(snapshot);
+  document.body.append(previous);
+  return previous;
 }
+
+async function changePage(path, push = true) {
+  const version = ++transitionId;
+  document.querySelectorAll('.page-outgoing').forEach(element => element.remove());
+  app.classList.remove('page-arriving', 'page-initial');
+  const outgoing = captureCurrentPage();
+  if (push && location.pathname + location.search !== path) history.pushState({}, '', path);
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  await route();
+  if (version !== transitionId) { outgoing?.remove(); return; }
+  if (!outgoing || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    outgoing?.remove();
+    return;
+  }
+  // The next page appears on top while the previous page retreats.
+  void app.offsetWidth;
+  app.classList.add('page-arriving');
+  outgoing.classList.add('is-leaving');
+  window.setTimeout(() => {
+    outgoing.remove();
+    if (version === transitionId) app.classList.remove('page-arriving');
+  }, 490);
+}
+function navigate(path) { return changePage(path, true); }
 
 const sceneLabels = {
   home: 'Menu principal', codex: 'Códice', characters: 'Personagens',
@@ -190,7 +347,7 @@ function drawSceneEffects() {
   const config = state.settings;
   const assetKind = sceneAssetKinds[scene];
   const version = config.assets?.[assetKind];
-  const image = version ? `url("/site-media/${assetKind}?v=${version}")` : 'none';
+  const image = assetUrl(assetKind) ? `url("${assetUrl(assetKind)}")` : 'none';
   const intensity = config.backgroundEffects?.[scene] || { overlay: 48, vignette: 55 };
   container.style.setProperty('--scene-bg', image);
   container.style.setProperty('--overlay-opacity', String(intensity.overlay / 100));
@@ -228,8 +385,9 @@ function renderHome() {
   state.current = null;
   document.body.className = 'on-title-screen';
   const settings = state.settings;
-  const logo = settings.assets.logo
-    ? `<h1 class="sr-only">${escapeHtml(settings.siteName)}</h1><img class="title-logo-image" draggable="false" src="/site-media/logo?v=${settings.assets.logo}" alt="${escapeHtml(settings.siteName)}">`
+  stopMenuWave();
+  const logo = assetUrl('logo')
+    ? `<h1 class="sr-only">${escapeHtml(settings.siteName)}</h1><img class="title-logo-image" draggable="false" src="${escapeHtml(assetUrl('logo'))}" alt="${escapeHtml(settings.siteName)}">`
     : `<h1 class="title-logo-text" id="screen-title">${escapeHtml(settings.siteName)}</h1>`;
   app.innerHTML = `<section class="title-screen" aria-label="Menu principal de Asas de Ferro">
     <div class="sky-lights" aria-hidden="true"><div class="light-ring"></div><div class="horizon-line"></div></div>
@@ -242,7 +400,7 @@ function renderHome() {
       <nav class="title-menu" aria-label="Menu principal">
         ${menuOptions.map((item, index) => {
           const inner = `<span class="menu-selection-light" aria-hidden="true"></span>
-            <span class="menu-waves" aria-hidden="true"><i></i><i></i></span>
+            <canvas class="menu-wave-canvas" aria-hidden="true"></canvas>
             <span class="menu-glyph" aria-hidden="true">✦</span>
             <span class="menu-label">${item.name}</span>`;
           return item.url
@@ -258,6 +416,7 @@ function renderHome() {
     active = index;
     items.forEach((element, i) => element.classList.toggle('is-selected', i === active));
   };
+  attachMenuWaves(items);
   items.forEach((item, index) => {
     item.addEventListener('pointerenter', () => selectItem(index));
     item.addEventListener('focus', () => selectItem(index));
@@ -280,15 +439,39 @@ function filteredEntries() {
 }
 
 function entryList(selectedSlug) {
-  const entries = filteredEntries();
-  return entries.length ? entries.map(item => `<li><a data-nav href="/codice/${item.slug}" ${item.slug === selectedSlug ? 'aria-current="page"' : ''}>
-    <span class="item-title">${escapeHtml(item.title)}</span><small>${escapeHtml(item.category)}</small></a></li>`).join('')
-    : '<li class="list-empty">Nenhum verbete encontrado.</li>';
+  const matches = filteredEntries();
+  if (!matches.length) return '<li class="list-empty">Nenhum verbete encontrado.</li>';
+  const map = new Map(state.entries.map(item => [item.slug, item]));
+  const included = new Set(matches.map(item => item.slug));
+  for (const item of matches) {
+    let parent = item.parentSlug;
+    const seen = new Set([item.slug]);
+    while (parent && map.has(parent) && !seen.has(parent)) {
+      included.add(parent);
+      seen.add(parent);
+      parent = map.get(parent).parentSlug;
+    }
+  }
+  const groups = new Map();
+  for (const item of state.entries.filter(item => included.has(item.slug))) {
+    const parent = included.has(item.parentSlug) && item.parentSlug !== item.slug ? item.parentSlug : '';
+    if (!groups.has(parent)) groups.set(parent, []);
+    groups.get(parent).push(item);
+  }
+  const render = (parent, seen = new Set()) => (groups.get(parent) || []).map(item => {
+    if (seen.has(item.slug)) return '';
+    const next = new Set([...seen, item.slug]);
+    const childNodes = render(item.slug, next);
+    return `<li><a data-nav href="/codice/${item.slug}" ${item.slug === selectedSlug ? 'aria-current="page"' : ''}>
+      <span class="item-title">${escapeHtml(item.title)}</span><small>${escapeHtml(item.category)}</small></a>
+      ${childNodes ? `<ul class="entry-list children">${childNodes}</ul>` : ''}</li>`;
+  }).join('');
+  return render('');
 }
 
 function sidebar(selectedSlug) {
   return `<aside class="sidebar" aria-label="Índice do Códice">
-    <div class="sidebar-title"><span>ÍNDICE DO MUNDO</span><small>AD / 01</small></div>
+    <div class="sidebar-title"><span>ÍNDICE DO MUNDO</span></div>
     <label for="search">PESQUISAR</label>
     <input id="search" type="search" value="${escapeHtml(state.search)}" placeholder="Ilha, nação, palavra-chave…" autocomplete="off">
     <label for="tag-filter">FILTRAR POR MARCADOR</label>
@@ -324,31 +507,36 @@ async function renderCodex(slug) {
     }
   }
   state.current = item;
+  const directChildren = item ? state.entries.filter(entry => entry.parentSlug === item.slug) : [];
+  const parent = item?.parentSlug ? state.entries.find(entry => entry.slug === item.parentSlug) : null;
   const article = item ? `<article class="reader">
+    ${parent ? `<a href="/codice/${parent.slug}" data-nav class="article-parent">← ${escapeHtml(parent.title)}</a>` : ''}
     <h2 class="article-title">${escapeHtml(item.title)}</h2>
     <p class="metadata">${escapeHtml(item.category)}</p>
     <div class="tags">${item.tags.map(tag => `<button type="button" class="tag" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join('')}</div>
     ${item.summary ? `<p class="reader-summary">${escapeHtml(item.summary)}</p>` : ''}
+    ${item.banner ? `<button type="button" id="open-banner" class="codex-banner" aria-label="Ampliar imagem de ${escapeHtml(item.title)}"><img src="${escapeHtml(item.banner)}" draggable="false" alt="Banner de ${escapeHtml(item.title)}"><span>AMPLIAR IMAGEM</span></button>` : ''}
     ${state.isAdmin ? `<div class="reader-actions">
       <button type="button" class="ui-button" id="edit-codex">EDITAR VERBETE</button>
       <button type="button" class="ui-button secondary" id="preview-codex">${preview ? 'VISÃO DO MESTRE' : 'PRÉVIA DO VISITANTE'}</button>
     </div>` : ''}
     ${preview && state.isAdmin ? '<p class="small faint">Exibindo os níveis de conhecimento acessíveis aos visitantes.</p>' : ''}
-    ${knowledgeLevels.map(([key, title], index) => `<section class="knowledge-section" data-knowledge="${key}" aria-label="${title}">
-      <h2><span>${String(index + 1).padStart(2, '0')}</span> ${title}</h2>
+    ${knowledgeLevels.map(([key, title]) => `<section class="knowledge-section" data-knowledge="${key}" aria-label="${title}">
+      <h2>${title}</h2>
       ${item.content[key] === null
-        ? `<div class="censored"><strong>???</strong><p>Conhecimento ainda não disponível.</p></div>`
+        ? `<div class="censored"><strong>???</strong></div>`
         : `<div class="codex-body">${renderMarkdown(item.content[key]) || '<p class="small">Sem informações registradas.</p>'}</div>`}
     </section>`).join('')}
-  </article>` : `<div class="empty-state"><span class="empty-index">ARQUIVO / NAVEGAÇÃO</span>
-    <h2>Explore o Códice.</h2><p>Selecione uma localidade no índice para conhecer as histórias que atravessam os céus.</p></div>`;
+    ${directChildren.length ? `<section class="subentries"><h3>SUBVERBETES</h3><ul>${directChildren.map(child => `<li><a data-nav href="/codice/${child.slug}">${escapeHtml(child.title)}</a></li>`).join('')}</ul></section>` : ''}
+  </article>` : `<div class="empty-state" aria-label="Nenhum verbete selecionado"></div>`;
   app.innerHTML = `<div class="scene reader-scene"><div class="inner-page">
     ${adminBack()}
-    <div class="page-heading"><div><h1>Códice</h1><p>Fragmentos de história. Conhecimento a descobrir.</p></div><div class="page-counter">REGISTROS / ${state.entries.length.toString().padStart(2, '0')}</div></div>
+    <div class="page-heading"><h1>Códice</h1></div>
     <div class="codex-layout">${sidebar(slug)}${article}</div>
   </div></div>`;
   bindSidebar(slug);
   document.querySelectorAll('.codex-body').forEach(section => addAutomaticLinks(section, slug));
+  document.querySelector('#open-banner')?.addEventListener('click', () => openBannerViewer(item.banner, item.title));
   document.querySelector('#edit-codex')?.addEventListener('click', () => navigate(`/admin/codice/editar/${slug}`));
   document.querySelector('#preview-codex')?.addEventListener('click', () => navigate(`/codice/${slug}${preview ? '' : '?preview=1'}`));
 }
@@ -356,7 +544,7 @@ async function renderCodex(slug) {
 function renderLogin() {
   app.innerHTML = `<div class="scene inner-scene"><div class="inner-page">${adminBack()}<div class="login-wrap">
     <section class="login"><div class="eyebrow">ACESSO RESTRITO</div>
-      <h1>Área do Mestre</h1><p>Gerencie os conhecimentos do mundo usando sua conta de administrador.</p>
+      <h1>Área do Mestre</h1>
       <form id="login-form">
         <label for="username">USUÁRIO</label><input id="username" name="username" required autocomplete="username" value="admin">
         <label for="password">SENHA</label><input id="password" name="password" type="password" required autocomplete="current-password">
@@ -375,7 +563,7 @@ function renderLogin() {
       }) });
       state.isAdmin = true;
       state.entries = [];
-      await route();
+      await changePage('/admin', false);
     } catch (error) { notice(error.message, true); }
     finally { button.disabled = false; }
   });
@@ -383,7 +571,7 @@ function renderLogin() {
 
 function freshEntry() {
   return {
-    slug: '', title: '', category: 'Geral', summary: '', tags: [], aliases: [], publicLevel: 0,
+    slug: '', title: '', category: 'Geral', summary: '', tags: [], aliases: [], parentSlug: null, banner: '', publicLevel: 0,
     content: { general: '', specific: '', professional: '' },
   };
 }
@@ -408,17 +596,12 @@ function renderDashboard() {
     <div class="subtle-particles" aria-hidden="true"></div>
     <div class="inner-page">
       ${adminBack()}
-      <div class="panel-heading"><span class="overline">PAINEL DO MESTRE</span><h1>Administração</h1>
-        <p>Escolha o que deseja gerenciar.</p></div>
+      <div class="panel-heading"><span class="overline">PAINEL DO MESTRE</span><h1>Administração</h1></div>
       <div class="dashboard-grid">
-        <a class="dashboard-option" data-nav href="/admin/codice"><span class="option-number">01 / ARQUIVOS</span>
-          <strong>Códice</strong><span>Crie, organize e edite os registros do mundo.</span><small>GERENCIAR VERBETES　→</small></a>
-        <a class="dashboard-option" data-nav href="/admin/site"><span class="option-number">02 / CONFIGURAÇÕES</span>
-          <strong>Identidade do site</strong><span>Nome, logo, ícone, fundo e prévias de compartilhamento.</span><small>PERSONALIZAR　→</small></a>
-        <a class="dashboard-option" data-nav href="/admin/tags"><span class="option-number">03 / ORGANIZAÇÃO</span>
-          <strong>Marcadores</strong><span>Crie, renomeie e remova marcadores dos verbetes.</span><small>GERENCIAR MARCADORES　→</small></a>
-        <button class="dashboard-option dashboard-logout" id="logout" type="button"><span class="option-number">04 / SESSÃO</span>
-          <strong>Encerrar sessão</strong><span>Desconectar a conta de administrador.</span><small>SAIR　→</small></button>
+        <a class="dashboard-option" data-nav href="/admin/codice"><strong>Códice</strong></a>
+        <a class="dashboard-option" data-nav href="/admin/site"><strong>Personalização</strong></a>
+        <a class="dashboard-option" data-nav href="/admin/tags"><strong>Marcadores</strong></a>
+        <button class="dashboard-option dashboard-logout" id="logout" type="button"><strong>Encerrar sessão</strong></button>
       </div>
       <p class="notice" id="notice" role="status"></p>
     </div>
@@ -431,15 +614,16 @@ async function renderAdminCodices() {
   app.innerHTML = `<div class="scene inner-scene"><div class="inner-page">
     ${adminBack('PAINEL DO MESTRE', '/admin')}
     <div class="panel-heading"><span class="overline">ADMINISTRAÇÃO / ARQUIVOS</span><h1>Gerenciar Códice</h1></div>
-    <div class="admin-list-head"><p>Selecione um verbete ou crie um novo registro.</p>
+    <div class="admin-list-head">
       <div class="admin-list-actions"><a class="ui-button secondary" href="/admin/tags" data-nav>MARCADORES</a><a class="ui-button" href="/admin/codice/novo" data-nav>NOVO VERBETE</a></div></div>
     <div class="admin-entry-list">${state.entries.map(item => `<a href="/admin/codice/editar/${item.slug}" data-nav>
-      <span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.category)}</small></span>
+      <span><strong>${item.parentSlug ? '↳ ' : ''}${escapeHtml(item.title)}</strong><small>${escapeHtml(item.category)}</small></span>
       <span>EDITAR　→</span></a>`).join('') || '<p>Nenhum registro encontrado.</p>'}</div>
   </div></div>`;
 }
 
 async function renderEditor(editSlug = null) {
+  if (!state.entries.length) await loadIndex();
   let item = freshEntry();
   if (editSlug) {
     try { item = (await api(`codices/${editSlug}`)).entry; }
@@ -448,8 +632,7 @@ async function renderEditor(editSlug = null) {
   app.innerHTML = `<div class="scene inner-scene"><div class="inner-page">
     ${adminBack('GERENCIAR CÓDICE', '/admin/codice')}
     <section class="editor">
-      <div class="panel-heading"><span class="overline">EDITOR DE CONHECIMENTO</span><h1>${editSlug ? `Editar: ${escapeHtml(item.title)}` : 'Novo verbete'}</h1>
-        <p>Defina o que os jogadores podem descobrir.</p></div>
+      <div class="panel-heading"><span class="overline">EDITOR DE CONHECIMENTO</span><h1>${editSlug ? `Editar: ${escapeHtml(item.title)}` : 'Novo verbete'}</h1></div>
       <form id="codex-form">
         <div class="editor-grid">
           <div><label for="title">TÍTULO</label><input id="title" required maxlength="120" value="${escapeHtml(item.title)}"></div>
@@ -458,14 +641,19 @@ async function renderEditor(editSlug = null) {
           <div><label for="public-level">CONHECIMENTO PÚBLICO ATÉ</label><select id="public-level">
             <option value="-1" ${item.publicLevel === -1 ? 'selected' : ''}>Nenhum / nome oculto (???)</option>
             ${knowledgeLevels.map(([key, label], index) => `<option value="${index}" ${item.publicLevel === index ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
-          <div><label for="tags">MARCADORES <span class="hint">(separados por vírgula)</span></label><input id="tags" value="${escapeHtml(item.tags.join(', '))}"></div>
-          <div><label for="aliases">OUTROS NOMES <span class="hint">(links automáticos)</span></label><input id="aliases" value="${escapeHtml(item.aliases.join(', '))}"></div>
+          <div><label for="tags">MARCADORES</label><input id="tags" value="${escapeHtml(item.tags.join(', '))}"></div>
+          <div><label for="aliases">OUTROS NOMES</label><input id="aliases" value="${escapeHtml(item.aliases.join(', '))}"></div>
+          <div><label for="parentSlug">VERBETE PAI (SUBVERBETE)</label><select id="parentSlug"><option value="">Nenhum, verbete principal</option>
+            ${state.entries.filter(e => e.slug !== editSlug).map(entry => `<option value="${entry.slug}" ${item.parentSlug === entry.slug ? 'selected' : ''}>${escapeHtml(entry.title)}</option>`).join('')}</select></div>
         </div>
+        <label for="banner">BANNER DO VERBETE (OPCIONAL)</label>
+        <div class="image-choice"><input id="banner" readonly placeholder="Nenhuma imagem selecionada" value="${escapeHtml(item.banner || '')}">
+          <button type="button" class="ui-button secondary" id="choose-banner">BIBLIOTECA</button>
+          <button type="button" class="ui-button secondary" id="clear-banner">LIMPAR</button></div>
         <label for="summary">RESUMO PÚBLICO OPCIONAL</label>
         <textarea id="summary" rows="3" maxlength="1000">${escapeHtml(item.summary)}</textarea>
-        <p class="hint">Escolha “Nenhum” para ocultar também o nome, o resumo e os marcadores dos visitantes. Níveis acima do escolhido são censurados. Para ocultar um trecho específico, use {{secret}}texto{{/secret}}.</p>
         <div class="editor-content">
-          ${knowledgeLevels.map(([key, label]) => `<label for="content-${key}">${label.toUpperCase()} <span class="hint">(Markdown e [[identificador|texto]])</span></label>
+          ${knowledgeLevels.map(([key, label]) => `<label for="content-${key}">${label.toUpperCase()}</label>
             <textarea id="content-${key}" spellcheck="true">${escapeHtml(item.content[key])}</textarea>`).join('')}
         </div>
         <div class="editor-actions"><button type="submit" class="ui-button">${editSlug ? 'SALVAR ALTERAÇÕES' : 'CRIAR VERBETE'}</button>
@@ -474,6 +662,8 @@ async function renderEditor(editSlug = null) {
         </div>
       </form><p id="notice" class="notice" role="status"></p>
     </section></div></div>`;
+  document.querySelector('#choose-banner').addEventListener('click', () => openAssetLibrary(value => { document.querySelector('#banner').value = value; }));
+  document.querySelector('#clear-banner').addEventListener('click', () => { document.querySelector('#banner').value = ''; });
   let slugTouched = Boolean(editSlug);
   document.querySelector('#slug').addEventListener('input', () => { slugTouched = true; });
   document.querySelector('#title').addEventListener('input', event => {
@@ -492,6 +682,7 @@ async function renderEditor(editSlug = null) {
     const payload = {
       title: value('title').trim(), slug: value('slug').trim(), category: value('category').trim(),
       summary: value('summary'), tags: list(value('tags')), aliases: list(value('aliases')),
+      parentSlug: value('parentSlug') || null, banner: value('banner'),
       publicLevel: Number(value('public-level')),
       content: Object.fromEntries(knowledgeLevels.map(([key]) => [key, value(`content-${key}`)])),
     };
@@ -513,7 +704,7 @@ async function renderTagManager() {
   app.innerHTML = `<div class="scene inner-scene"><div class="inner-page tags-manager">
     ${adminBack('PAINEL DO MESTRE', '/admin')}
     <div class="panel-heading"><span class="overline">ADMINISTRAÇÃO / ORGANIZAÇÃO</span>
-      <h1>Marcadores</h1><p>Renomeie ou remova um marcador em todos os verbetes que o utilizam.</p></div>
+      <h1>Marcadores</h1></div>
     <section class="settings-panel">
       <form id="create-tag" class="tag-create-row">
         <div><label for="new-tag">NOVO MARCADOR</label><input id="new-tag" maxlength="50" required placeholder="Ex.: Impérios"></div>
@@ -525,7 +716,6 @@ async function renderTagManager() {
         <button type="button" class="ui-button secondary" data-tag-rename="${index}">RENOMEAR</button>
         <button type="button" class="ui-button danger" data-tag-delete="${index}">REMOVER</button>
       </div>`).join('') || '<p>Nenhum marcador registrado.</p>'}</div>
-      <p class="small faint">Ao renomear ou remover, todos os verbetes associados são atualizados.</p>
       <p id="notice" class="notice" role="status"></p>
     </section>
   </div></div>`;
@@ -572,84 +762,134 @@ function particleLayerEditor(layer, index) {
       <button type="button" class="ui-button danger" data-remove-particle="${index}">REMOVER CAMADA</button></div>
     <div class="particle-fields">
       <label>Nome <input data-particle-field="name" maxlength="50" value="${escapeHtml(layer.name)}"></label>
-      <label>Exibir em ${select('page', [['all','Todas as páginas'], ...Object.entries(sceneLabels)])}</label>
+      <label>Exibir em ${select('page', [['all','Todas as páginas'], ...((state.pages.length ? state.pages.map(page => [page.id, page.label]) : Object.entries(sceneLabels)))])}</label>
       <label>Cor <input data-particle-field="color" type="color" value="${escapeHtml(layer.color)}"></label>
       <label>Direção ${select('direction', particleDirections)}</label>
-      <label>Quantidade (0–80) <input data-particle-field="count" type="number" min="0" max="80" step="1" value="${layer.count}"></label>
-      <label>Velocidade, duração em segundos (2–100) <input data-particle-field="speed" type="number" min="2" max="100" step="1" value="${layer.speed}"></label>
-      <label>Intensidade / opacidade (0–100%) <input data-particle-field="opacity" type="range" min="0" max="100" step="1" value="${Math.round(layer.opacity * 100)}"><output>${Math.round(layer.opacity * 100)}%</output></label>
-      <label>Tamanho (1–12px) <input data-particle-field="size" type="number" min="1" max="12" step="1" value="${layer.size}"></label>
+      <label>Quantidade <input data-particle-field="count" type="number" min="0" max="80" step="1" value="${layer.count}"></label>
+      <label>Duração (s) <input data-particle-field="speed" type="number" min="2" max="100" step="1" value="${layer.speed}"></label>
+      <label>Opacidade <input data-particle-field="opacity" type="range" min="0" max="100" step="1" value="${Math.round(layer.opacity * 100)}"><output>${Math.round(layer.opacity * 100)}%</output></label>
+      <label>Tamanho <input data-particle-field="size" type="number" min="1" max="12" step="1" value="${layer.size}"></label>
     </div>
   </fieldset>`;
 }
 
-function assetField(kind, title, description, accept) {
-  const version = state.settings.assets[kind];
-  const path = `/site-media/${kind}?v=${version}`;
-  return `<div class="asset-field"><div class="asset-field-info"><strong>${title}</strong><p>${description}</p>
-    ${version ? `<div class="uploaded-asset"><img src="${path}" draggable="false" alt="Prévia: ${title}"><span>Arquivo atual</span></div>` : '<span class="small faint">Nenhum arquivo enviado.</span>'}</div>
-    <div class="asset-actions"><input id="asset-${kind}" type="file" accept="${accept}" aria-label="Arquivo para ${title}">
-      <button type="button" class="ui-button secondary" data-upload="${kind}">ENVIAR ARQUIVO</button>
-      ${version ? `<button type="button" class="ui-button secondary" data-remove="${kind}">REMOVER</button>` : ''}</div></div>`;
+function assetField(kind, title, currentValue = state.settings.assets?.[kind]) {
+  const current = resolveAssetUrl(kind, currentValue);
+  return `<div class="asset-field"><div class="asset-field-info"><strong>${title}</strong>
+    <div class="image-choice"><input id="asset-${kind}" type="text" readonly placeholder="Nenhuma imagem selecionada" value="${escapeHtml(current)}">
+      <button type="button" class="ui-button secondary" data-pick-asset="${kind}">BIBLIOTECA</button>
+      <button type="button" class="ui-button secondary" data-clear-asset="${kind}">LIMPAR</button></div></div>
+    <div class="asset-preview" id="preview-${kind}">${current ? `<img src="${escapeHtml(current)}" draggable="false" alt="Prévia de ${escapeHtml(title)}">` : '<span>Sem imagem</span>'}</div></div>`;
 }
 
 async function renderSiteSettings() {
-  const s = state.settings;
+  const [{ pages }, { settings: freshSettings }] = await Promise.all([
+    siteRequest('/system/site-pages'), siteRequest('/system/site-config'),
+  ]);
+  state.pages = pages;
+  state.settings = freshSettings;
+  const s = freshSettings;
+  const draftAssets = { ...s.assets };
+  const draftEffects = structuredClone(s.backgroundEffects || {});
+  let draftLayers = structuredClone(s.particleLayers || []);
+  let selectedPage = pages[0]?.id || '';
+
   app.innerHTML = `<div class="scene inner-scene"><div class="inner-page settings-page">
     ${adminBack('PAINEL DO MESTRE', '/admin')}
-    <div class="panel-heading"><span class="overline">ADMINISTRAÇÃO / PERSONALIZAÇÃO</span><h1>Identidade do site</h1>
-      <p>Defina os nomes, imagens e informações exibidas ao compartilhar um link.</p></div>
+    <div class="panel-heading"><h1>Personalização</h1></div>
     <section class="settings-panel">
+      <div class="settings-tabs" role="tablist" aria-label="Categorias de personalização">
+        <button type="button" role="tab" aria-selected="true" data-settings-tab="identity">IDENTIDADE</button>
+        <button type="button" role="tab" aria-selected="false" data-settings-tab="pages">PÁGINAS</button>
+        <button type="button" role="tab" aria-selected="false" data-settings-tab="particles">PARTÍCULAS</button>
+      </div>
       <form id="site-form">
-        <h2>Informações gerais</h2>
-        <div class="editor-grid">
-          <div><label for="siteName">NOME DO SITE</label><input id="siteName" maxlength="90" required value="${escapeHtml(s.siteName)}"></div>
-          <div><label for="tagline">SUBTÍTULO DO MENU PRINCIPAL</label><input id="tagline" maxlength="160" value="${escapeHtml(s.tagline)}"></div>
-        </div>
-        <label for="description">DESCRIÇÃO DO SITE</label><textarea id="description" maxlength="320" rows="3" required>${escapeHtml(s.description)}</textarea>
-        <h2>Prévia do link</h2>
-        <div class="editor-grid">
-          <div><label for="shareTitle">TÍTULO PARA COMPARTILHAMENTO <span class="hint">(opcional)</span></label><input id="shareTitle" maxlength="140" value="${escapeHtml(s.shareTitle)}"></div>
-          <div><label for="siteUrl">DOMÍNIO DO SITE <span class="hint">(opcional, HTTPS)</span></label><input id="siteUrl" type="url" placeholder="https://seusite.com" maxlength="300" value="${escapeHtml(s.siteUrl)}"></div>
-        </div>
-        <label for="shareDescription">DESCRIÇÃO DO LINK <span class="hint">(opcional)</span></label>
-        <textarea id="shareDescription" maxlength="320" rows="3">${escapeHtml(s.shareDescription)}</textarea>
-        <div class="editor-grid"><div><label for="themeColor">COR DO NAVEGADOR</label><input id="themeColor" type="color" value="${escapeHtml(s.themeColor)}"></div></div>
-        <h2>Fundos por página</h2>
-        <p class="small faint">O escurecimento e a vinheta são independentes em cada tela. 0% = nenhum escurecimento; 100% = máximo.</p>
-        <div class="background-controls">${Object.entries(sceneLabels).map(([key, label]) => {
-          const fx = s.backgroundEffects?.[key] || { overlay: 45, vignette: 55 };
-          return `<fieldset class="background-control"><legend>${label}</legend>
-            <label for="overlay-${key}">Escurecimento: <output>${fx.overlay}%</output></label>
-            <input id="overlay-${key}" type="range" min="0" max="100" step="1" value="${fx.overlay}">
-            <label for="vignette-${key}">Vinheta: <output>${fx.vignette}%</output></label>
-            <input id="vignette-${key}" type="range" min="0" max="100" step="1" value="${fx.vignette}">
-          </fieldset>`;
-        }).join('')}</div>
-        <h2>Partículas do site</h2>
-        <p class="small faint">Até 8 camadas, 180 partículas ativas ao todo. Mais segundos = movimento mais lento. A opção “Todas as páginas” também afeta o Códice e a administração.</p>
-        <div id="particle-editor-list"></div>
-        <button class="ui-button secondary" type="button" id="add-particle">ADICIONAR CAMADA DE PARTÍCULAS</button>
-        <div class="settings-save"><button class="ui-button" type="submit">SALVAR CONFIGURAÇÕES E EFEITOS</button></div>
+        <section id="settings-panel-identity" class="settings-tab-panel" role="tabpanel" data-settings-panel="identity">
+          <div class="editor-grid">
+            <div><label for="siteName">NOME DO SITE</label><input id="siteName" maxlength="90" required value="${escapeHtml(s.siteName)}"></div>
+            <div><label for="tagline">SUBTÍTULO</label><input id="tagline" maxlength="160" value="${escapeHtml(s.tagline)}"></div>
+          </div>
+          <label for="description">DESCRIÇÃO DO SITE</label><textarea id="description" maxlength="320" rows="2" required>${escapeHtml(s.description)}</textarea>
+          <div class="editor-grid">
+            <div><label for="shareTitle">TÍTULO DO LINK</label><input id="shareTitle" maxlength="140" value="${escapeHtml(s.shareTitle)}"></div>
+            <div><label for="siteUrl">DOMÍNIO HTTPS</label><input id="siteUrl" type="url" maxlength="300" value="${escapeHtml(s.siteUrl)}"></div>
+          </div>
+          <label for="shareDescription">DESCRIÇÃO DO LINK</label>
+          <textarea id="shareDescription" maxlength="320" rows="2">${escapeHtml(s.shareDescription)}</textarea>
+          <label for="themeColor">COR DO NAVEGADOR</label><input id="themeColor" type="color" value="${escapeHtml(s.themeColor)}">
+          <div class="settings-identity-assets">
+            ${assetField('logo', 'Logo', draftAssets.logo)}
+            ${assetField('icon', 'Favicon', draftAssets.icon)}
+            ${assetField('social', 'Imagem do link', draftAssets.social)}
+          </div>
+        </section>
+        <section id="settings-panel-pages" class="settings-tab-panel" role="tabpanel" data-settings-panel="pages" hidden>
+          <label for="page-settings-selector">PÁGINA</label>
+          <select id="page-settings-selector">${pages.map(page => `<option value="${escapeHtml(page.id)}" ${page.id === selectedPage ? 'selected' : ''}>${escapeHtml(page.label)}</option>`).join('')}</select>
+          <div id="page-settings-controls" aria-live="polite"></div>
+        </section>
+        <section id="settings-panel-particles" class="settings-tab-panel" role="tabpanel" data-settings-panel="particles" hidden>
+          <div id="particle-editor-list"></div>
+          <button class="ui-button secondary" type="button" id="add-particle">ADICIONAR CAMADA</button>
+        </section>
+        <div class="settings-save"><button class="ui-button" type="submit">SALVAR ALTERAÇÕES</button></div>
       </form>
       <p class="notice" id="notice" role="status"></p>
-      <div class="settings-assets"><h2>Arquivos visuais</h2><p class="small">Envie seus próprios arquivos. Os formatos aceitos são PNG, JPG e WebP; o favicon também aceita ICO.</p>
-        ${assetField('logo', 'Logo do menu', 'Imagem no topo da tela inicial. PNG transparente funciona melhor. Até 2 MB.', '.png,.jpg,.jpeg,.webp')}
-        ${Object.entries(sceneLabels).map(([key, label]) => assetField(sceneAssetKinds[key], `Fundo: ${label}`, `Plano de fundo exclusivo para ${label.toLowerCase()}. Até 4 MB.`, '.png,.jpg,.jpeg,.webp')).join('')}
-        ${assetField('icon', 'Ícone do site', 'Favicon para a aba do navegador. Recomendado 64×64 ou 128×128. Até 512 KB.', '.png,.ico')}
-        ${assetField('social', 'Imagem para compartilhamento', 'Imagem de prévia para Discord, WhatsApp e redes sociais. Recomendado 1200×630. Até 4 MB.', '.png,.jpg,.jpeg,.webp')}
-      </div>
-      <p class="small">As prévias são geradas pelo servidor. Após alterar a identidade, verifique novamente seu link usando o domínio publicado no Netlify.</p>
     </section>
   </div></div>`;
-  let draftLayers = structuredClone(s.particleLayers || []);
+
   const form = document.querySelector('#site-form');
+  const tabs = [...document.querySelectorAll('[data-settings-tab]')];
+  tabs.forEach(button => button.addEventListener('click', () => {
+    const selected = button.dataset.settingsTab;
+    tabs.forEach(tab => {
+      tab.setAttribute('aria-selected', String(tab === button));
+    });
+    document.querySelectorAll('[data-settings-panel]').forEach(panel => {
+      panel.hidden = panel.dataset.settingsPanel !== selected;
+    });
+  }));
+
+  function savePageInputs() {
+    const overlay = document.querySelector('#page-overlay');
+    const vignette = document.querySelector('#page-vignette');
+    if (!overlay || !vignette || !selectedPage) return;
+    draftEffects[selectedPage] = { overlay: Number(overlay.value), vignette: Number(vignette.value) };
+  }
+
+  function drawPageControls() {
+    const page = pages.find(page => page.id === selectedPage);
+    const target = document.querySelector('#page-settings-controls');
+    if (!page) { target.textContent = ''; return; }
+    const fx = draftEffects[page.id] || { overlay: 45, vignette: 55 };
+    target.innerHTML = `<div class="page-settings-card">
+      <div class="settings-slider"><label for="page-overlay">ESCURECIMENTO <output id="page-overlay-out">${fx.overlay}%</output></label>
+        <input id="page-overlay" type="range" min="0" max="100" step="1" value="${fx.overlay}"></div>
+      <div class="settings-slider"><label for="page-vignette">VINHETA <output id="page-vignette-out">${fx.vignette}%</output></label>
+        <input id="page-vignette" type="range" min="0" max="100" step="1" value="${fx.vignette}"></div>
+      ${assetField(page.backgroundKind, 'Imagem de fundo', draftAssets[page.backgroundKind])}
+    </div>`;
+    target.querySelectorAll('input[type="range"]').forEach(slider => {
+      slider.addEventListener('input', () => {
+        const output = document.querySelector(`#${slider.id}-out`);
+        if (output) output.textContent = `${slider.value}%`;
+        savePageInputs();
+      });
+    });
+  }
+  drawPageControls();
+  document.querySelector('#page-settings-selector').addEventListener('change', event => {
+    savePageInputs();
+    selectedPage = event.target.value;
+    drawPageControls();
+  });
+
   const showLayers = () => {
     document.querySelector('#particle-editor-list').innerHTML = draftLayers.map(particleLayerEditor).join('');
   };
   showLayers();
   document.querySelector('#add-particle').addEventListener('click', () => {
-    if (draftLayers.length >= 8) { notice('Limite de 8 camadas alcançado.', true); return; }
+    if (draftLayers.length >= 8) { notice('Limite de 8 camadas.', true); return; }
     draftLayers.push({ id: `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       name: `Camada ${draftLayers.length + 1}`, enabled: true, page: 'all',
       color: '#B5ECDD', count: 12, speed: 22, opacity: .45, size: 2, direction: 'up' });
@@ -667,7 +907,7 @@ async function renderSiteSettings() {
     const index = Number(input.closest('[data-particle-index]').dataset.particleIndex);
     const field = input.dataset.particleField;
     if (field === 'enabled') draftLayers[index][field] = input.checked;
-    else if (field === 'count' || field === 'speed' || field === 'size') draftLayers[index][field] = Number(input.value);
+    else if (['count', 'speed', 'size'].includes(field)) draftLayers[index][field] = Number(input.value);
     else if (field === 'opacity') {
       draftLayers[index][field] = Number(input.value) / 100;
       input.nextElementSibling.textContent = `${input.value}%`;
@@ -675,66 +915,48 @@ async function renderSiteSettings() {
   };
   document.querySelector('#particle-editor-list').addEventListener('input', updateParticle);
   document.querySelector('#particle-editor-list').addEventListener('change', updateParticle);
-  document.querySelectorAll('.background-control input[type="range"]').forEach(slider => {
-    slider.addEventListener('input', () => { slider.previousElementSibling.querySelector('output').textContent = `${slider.value}%`; });
+
+  // The image library works for both identity and the selected page.
+  document.querySelector('.settings-panel').addEventListener('click', event => {
+    const pick = event.target.closest('[data-pick-asset]');
+    if (pick) {
+      openAssetLibrary(url => {
+        const kind = pick.dataset.pickAsset;
+        draftAssets[kind] = url;
+        document.getElementById(`asset-${kind}`).value = url;
+        document.getElementById(`preview-${kind}`).innerHTML = `<img draggable="false" src="${escapeHtml(url)}" alt="Prévia">`;
+      });
+    }
+    const clear = event.target.closest('[data-clear-asset]');
+    if (clear) {
+      const kind = clear.dataset.clearAsset;
+      draftAssets[kind] = '';
+      document.getElementById(`asset-${kind}`).value = '';
+      document.getElementById(`preview-${kind}`).textContent = '';
+    }
   });
+
   form.addEventListener('submit', async event => {
     event.preventDefault();
-    const form = event.currentTarget;
+    savePageInputs();
     const button = form.querySelector('[type="submit"]');
     button.disabled = true;
     try {
       const fields = ['siteName', 'tagline', 'description', 'shareTitle', 'shareDescription', 'siteUrl', 'themeColor'];
       const payload = Object.fromEntries(fields.map(id => [id, form.querySelector(`#${id}`).value]));
-      payload.backgroundEffects = Object.fromEntries(Object.keys(sceneLabels).map(key => [key, {
-        overlay: Number(form.querySelector(`#overlay-${key}`).value),
-        vignette: Number(form.querySelector(`#vignette-${key}`).value),
-      }]));
+      payload.backgroundEffects = draftEffects;
       payload.particleLayers = draftLayers;
-      const result = await siteRequest('/system/site-config', { method: 'PUT', body: JSON.stringify(payload), headers: { 'content-type': 'application/json' } });
+      payload.assets = draftAssets;
+      const result = await siteRequest('/system/site-config', {
+        method: 'PUT', body: JSON.stringify(payload), headers: { 'content-type': 'application/json' },
+      });
       state.settings = result.settings;
       applySiteIdentity();
       drawSceneEffectsAfterSettings();
-      notice('Configurações salvas. Compartilhamentos antigos podem ficar em cache por algum tempo.');
+      notice('Alterações salvas.');
     } catch (error) { notice(error.message, true); }
     finally { button.disabled = false; }
   });
-  document.querySelectorAll('[data-upload]').forEach(button => {
-    button.addEventListener('click', async () => {
-      const kind = button.dataset.upload;
-      const input = document.querySelector(`#asset-${kind}`);
-      const file = input.files?.[0];
-      if (!file) { notice('Selecione um arquivo antes de enviar.', true); return; }
-      const limits = { logo: 2_000_000, icon: 512_000, social: 4_000_000 };
-      if (file.size > (limits[kind] || 4_000_000)) { notice('Arquivo acima do limite.', true); return; }
-      button.disabled = true;
-      try {
-        const result = await siteRequest(`/system/site-upload/${kind}`, {
-          method: 'POST', body: await file.arrayBuffer(), headers: { 'content-type': 'application/octet-stream' },
-        });
-        state.settings = result.settings;
-        applySiteIdentity();
-        await renderSiteSettings();
-        notice('Imagem enviada. Ela já está disponível no site.');
-      } catch (error) { notice(error.message, true); }
-      finally { button.disabled = false; }
-    });
-  });
-  document.querySelectorAll('[data-remove]').forEach(button => {
-    button.addEventListener('click', async () => {
-      if (!confirm('Remover esta imagem do site?')) return;
-      button.disabled = true;
-      try {
-        const result = await siteRequest(`/system/site-upload/${button.dataset.remove}`, { method: 'DELETE' });
-        state.settings = result.settings;
-        applySiteIdentity();
-        await renderSiteSettings();
-        notice('Imagem removida.');
-      } catch (error) { notice(error.message, true); }
-      finally { button.disabled = false; }
-    });
-  });
-
 }
 
 async function renderAdmin(pathname) {
@@ -752,6 +974,7 @@ async function renderAdmin(pathname) {
 
 let routeId = 0;
 async function route() {
+  stopMenuWave();
   const callId = ++routeId;
   const pathname = location.pathname;
   const section = pathname === '/' ? '' : pathname.startsWith('/codice') ? 'Códice' :
@@ -790,7 +1013,7 @@ document.addEventListener('click', event => {
   event.preventDefault();
   navigate(anchor.pathname + anchor.search);
 });
-window.addEventListener('popstate', route);
+window.addEventListener('popstate', () => { changePage(location.pathname + location.search, false); });
 
 (async () => {
   const [session, info] = await Promise.allSettled([api('session'), siteRequest('/system/site-config')]);
@@ -799,4 +1022,6 @@ window.addEventListener('popstate', route);
   else console.warn('Site settings unavailable:', info.reason);
   applySiteIdentity();
   await route();
+  app.classList.add('page-initial');
+  window.setTimeout(() => app.classList.remove('page-initial'), 400);
 })();

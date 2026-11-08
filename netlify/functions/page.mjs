@@ -25,7 +25,8 @@ export async function htmlPage(request, settings, codex = null) {
   const shareTitle = codex?.title ? title : settings.shareTitle || title;
   const shareDescription = codex?.summary || settings.shareDescription || description;
   const canonical = new URL(pathname, origin).href;
-  const asset = kind => `${origin}/site-media/${kind}?v=${settings.assets[kind]}`;
+  const asset = kind => typeof settings.assets?.[kind] === 'string' && settings.assets[kind].startsWith('/assets/')
+    ? new URL(settings.assets[kind], origin).href : `${origin}/site-media/${kind}?v=${settings.assets[kind]}`;
   const socialImage = settings.assets.social ? asset('social') : null;
   const favicon = settings.assets.icon ? asset('icon') : null;
   const meta = (name, value, property = false) => `<meta ${property ? 'property' : 'name'}="${name}" content="${htmlEscape(value)}">`;

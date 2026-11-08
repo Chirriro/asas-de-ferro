@@ -2,6 +2,7 @@ import { createHmac, scryptSync, timingSafeEqual } from 'node:crypto';
 
 export const levels = ['general', 'specific', 'professional'];
 export const cookieName = 'adf_session';
+export const validAssetPath = value => typeof value === 'string' && (value === '' || (/^\/assets\/[a-zA-Z0-9%_.~()/\-]+\.(png|jpe?g|webp|gif|avif|svg|ico)$/i.test(value) && !value.includes('..') && !value.includes('//') && !/%(?:2e|2f|5c)/i.test(value)));
 
 export function hideSecrets(value) {
   const open = '{{secret}}';
@@ -49,6 +50,8 @@ export function publicCodex(codex, isAdmin = false, secret = '') {
     summary: hidden ? '' : codex.summary,
     publicLevel: codex.publicLevel,
     updatedAt: codex.updatedAt,
+    parentSlug: hidden ? null : codex.parentSlug || null,
+    banner: hidden ? '' : (codex.banner || ''),
     content: {},
   };
   levels.forEach((level, index) => {
@@ -79,6 +82,10 @@ export function validateCodex(payload) {
     if (values.some(value => !value || value.length > max)) throw new Error('Marcador ou sinônimo inválido.');
     return [...new Set(values)];
   };
+  const parentSlug = payload.parentSlug == null || payload.parentSlug === '' ? null : String(payload.parentSlug);
+  if (parentSlug !== null && (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(parentSlug) || parentSlug === slug)) throw new Error('Verbete pai inválido.');
+  const banner = payload.banner || '';
+  if (!validAssetPath(banner)) throw new Error('Imagem de banner inválida.');
   const tags = cleanList(payload.tags || [], 50);
   const aliases = cleanList(payload.aliases || [], 120);
   if (!payload.content || typeof payload.content !== 'object') throw new Error('Conteúdo inválido.');
@@ -88,7 +95,7 @@ export function validateCodex(payload) {
     if (!hasValidSecretPairs(payload.content[level])) throw new Error(`Marcadores {{secret}} inválidos em ${level}.`);
     content[level] = payload.content[level];
   }
-  return { slug, title, category, summary, publicLevel, tags, aliases, content, updatedAt: new Date().toISOString() };
+  return { slug, title, category, summary, publicLevel, tags, aliases, parentSlug, banner, content, updatedAt: new Date().toISOString() };
 }
 
 export function passwordHash(password, saltHex) {
