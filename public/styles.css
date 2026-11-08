@@ -1,0 +1,67 @@
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #222;
+  background: #fafafa;
+}
+* { box-sizing: border-box; }
+body { min-width: 1050px; margin: 0; line-height: 1.6; }
+a { color: #244d83; }
+button, input, select, textarea { font: inherit; }
+button { padding: .55rem .85rem; cursor: pointer; }
+input, select, textarea { padding: .5rem .6rem; border: 1px solid #aaa; background: white; color: inherit; }
+textarea { resize: vertical; width: 100%; font-family: ui-monospace, monospace; font-size: .92rem; }
+:focus-visible { outline: 2px solid #244d83; outline-offset: 2px; }
+.site-header, .site-footer { padding: 1.2rem max(36px, calc((100vw - 1420px) / 2)); }
+.site-header { display: flex; justify-content: space-between; border-bottom: 1px solid #ddd; align-items: center; }
+.site-name { font-weight: 800; letter-spacing: .14em; }
+nav { display: flex; gap: 28px; }
+nav a { text-decoration: none; }
+nav a[aria-current="page"] { text-decoration: underline; text-underline-offset: 6px; }
+.site-footer { border-top: 1px solid #ddd; font-size: .82rem; color: #666; }
+main { max-width: 1420px; margin: auto; min-height: 69vh; padding: 38px 36px 64px; }
+.home { max-width: 750px; padding-top: 90px; }
+.home h1 { font-size: 2.6rem; letter-spacing: .05em; }
+.home p { font-size: 1.12rem; }
+.action-link { display: inline-block; padding: .65rem 1.1rem; border: 1px solid #888; text-decoration: none; }
+.page-intro { margin-top: 0; }
+.codex-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 32px; align-items: start; }
+.sidebar { border: 1px solid #ddd; background: white; padding: 18px; position: sticky; top: 20px; max-height: calc(100vh - 40px); overflow: auto; }
+.sidebar input, .sidebar select { width: 100%; margin: 6px 0 12px; }
+.sidebar label, .editor label, .login label { display: block; font-weight: 600; margin: .65rem 0 .3rem; }
+.entry-list { list-style: none; margin: 14px 0 0; padding: 0; }
+.entry-list li + li { border-top: 1px solid #eee; }
+.entry-list a { display: block; padding: 10px 4px; text-decoration: none; }
+.entry-list a[aria-current="page"] { background: #efefef; font-weight: 700; }
+.entry-list small { display: block; color: #666; }
+.reader, .editor, .login, .empty-state { background: #fff; border: 1px solid #ddd; padding: 32px; }
+.reader h1 { margin: 0 0 4px; font-size: 2rem; }
+.metadata { color: #666; margin: 4px 0 18px; }
+.tags { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 24px; }
+.tag { border: 1px solid #ccc; border-radius: 2px; padding: 2px 9px; background: #f7f7f7; font-size: .83rem; }
+button.tag { color: inherit; }
+.knowledge-section { border-top: 1px solid #dedede; padding: 23px 0 8px; }
+.knowledge-section h2 { font-size: 1.2rem; margin: 0 0 15px; }
+.knowledge-section p { margin: 0 0 1.15rem; }
+.knowledge-section h3, .knowledge-section h4 { margin: 1.4rem 0 .7rem; }
+.knowledge-section ul { margin: 0 0 1rem; }
+.censored { padding: 14px 0; color: #666; letter-spacing: .06em; }
+.censored strong { font-family: ui-monospace, monospace; letter-spacing: .16em; }
+.notice { margin: 12px 0; min-height: 1.5rem; }
+.notice.error { color: #a12828; }
+.notice.success { color: #28734b; }
+.reader-actions { display: flex; gap: 10px; margin: 0 0 24px; }
+.editor { max-width: 1060px; }
+.editor h1 { margin-top: 0; }
+.editor-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 22px; }
+.editor-grid input, .editor-grid select, .editor-grid textarea, .editor > form > input { display: block; width: 100%; }
+.editor textarea { min-height: 170px; margin-bottom: 12px; }
+.editor .editor-content textarea { min-height: 260px; }
+.hint { font-size: .85rem; color: #666; font-weight: 400; }
+.editor-actions { display: flex; gap: 10px; margin: 18px 0; }
+.editor-actions .danger { margin-left: auto; }
+.login { max-width: 450px; margin: 32px auto; }
+.login input { width: 100%; }
+.login button { margin-top: 20px; }
+.admin-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.admin-toolbar h1 { margin: 0 auto 0 0; }
+.small { color: #666; font-size: .86rem; }
