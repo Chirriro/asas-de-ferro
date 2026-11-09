@@ -106,6 +106,11 @@ function addAutomaticLinks(container, currentSlug) {
 }
 
 async function api(path, options = {}) {
+  if ((!options.method || options.method === 'GET') && readyApi?.has(path)) {
+    const result = readyApi.get(path);
+    if (result.error) throw result.error;
+    return result.value;
+  }
   const headers = { ...options.headers };
   if (options.method && options.method !== 'GET') headers['x-codex-request'] = '1';
   if (options.body) headers['content-type'] = 'application/json';
@@ -127,6 +132,11 @@ function notice(message, error = false) {
 }
 
 async function siteRequest(path, options = {}) {
+  if ((!options.method || options.method === 'GET') && readySystem?.has(path)) {
+    const result = readySystem.get(path);
+    if (result.error) throw result.error;
+    return result.value;
+  }
   const headers = { ...options.headers };
   if (options.method && options.method !== 'GET') headers['x-codex-request'] = '1';
   const response = await fetch(path, { credentials: 'same-origin', ...options, headers });
@@ -184,6 +194,44 @@ function openAssetLibrary(onPick) {
   }).catch(error => { list.textContent = error.message; });
 }
 
+// Banner sizing uses the original image dimensions before cropping.
+let disposeCodexBanner = () => {};
+
+function mountCodexBanner(container, zoomPercent, fitMode, position) {
+  const image = container.querySelector('.codex-banner-image');
+  const zoom = Math.min(140, Math.max(70, Number(zoomPercent) || 100)) / 100;
+  const fit = fitMode === 'contain' ? 'contain' : 'cover';
+  const alignY = position === 'top' ? 0 : position === 'bottom' ? 1 : .5;
+
+  const place = () => {
+    if (!image.naturalWidth || !image.naturalHeight || !container.isConnected) return;
+    const frameWidth = container.clientWidth;
+    const frameHeight = container.clientHeight;
+    if (!frameWidth || !frameHeight) return;
+    const originalWidth = image.naturalWidth;
+    const originalHeight = image.naturalHeight;
+    const base = fit === 'cover'
+      ? Math.max(frameWidth / originalWidth, frameHeight / originalHeight)
+      : Math.min(frameWidth / originalWidth, frameHeight / originalHeight);
+    const width = originalWidth * base * zoom;
+    const height = originalHeight * base * zoom;
+    image.style.width = `${width}px`;
+    image.style.height = `${height}px`;
+    image.style.left = `${(frameWidth - width) / 2}px`;
+    image.style.top = `${(frameHeight - height) * alignY}px`;
+    image.style.transformOrigin = `center ${position === 'top' ? 'top' : position === 'bottom' ? 'bottom' : 'center'}`;
+  };
+
+  const observer = new ResizeObserver(place);
+  observer.observe(container);
+  image.addEventListener('load', place);
+  if (image.complete) place();
+  return () => {
+    observer.disconnect();
+    image.removeEventListener('load', place);
+  };
+}
+
 function openBannerViewer(url, title) {
   const dialog = document.createElement('dialog');
   dialog.className = 'image-viewer';
@@ -196,7 +244,10 @@ function openBannerViewer(url, title) {
   close.type = 'button';
   close.textContent = 'FECHAR ×';
   close.addEventListener('click', () => dialog.close());
-  dialog.append(close, img);
+  const toolbar = document.createElement('div');
+  toolbar.className = 'image-viewer-toolbar';
+  toolbar.append(close);
+  dialog.append(toolbar, img);
   dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
   dialog.addEventListener('close', () => dialog.remove(), { once: true });
   document.body.append(dialog);
@@ -210,6 +261,10 @@ function attachMenuWaves(items) {
     const active = items.find(item => item.classList.contains('is-selected'));
     const canvas = active?.querySelector('canvas.menu-wave-canvas');
     if (canvas) {
+      const rootStyle = getComputedStyle(document.documentElement);
+      const tint = rootStyle.getPropertyValue('--theme-rgb').trim() || '65,100,109';
+      const light = hexRgb(rootStyle.getPropertyValue('--theme-light').trim());
+      const glow = rootStyle.getPropertyValue('--theme-glow').trim() || 'rgba(121,250,245,.8)';
       const rect = canvas.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
         const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
@@ -228,13 +283,13 @@ function attachMenuWaves(items) {
           ctx.beginPath();
           const gradient = ctx.createLinearGradient(0, 0, w, 0);
           const alpha = (.12 + (1 - Math.abs(blend - .5) * 1.5) * .4).toFixed(3);
-          gradient.addColorStop(0, 'rgba(63, 178, 197, 0)');
-          gradient.addColorStop(.2, `rgba(90, 217, 226, ${alpha})`);
-          gradient.addColorStop(.64, `rgba(179, 255, 232, ${alpha})`);
-          gradient.addColorStop(1, 'rgba(132, 225, 237, 0)');
+          gradient.addColorStop(0, `rgba(${tint}, 0)`);
+          gradient.addColorStop(.2, `rgba(${tint}, ${alpha})`);
+          gradient.addColorStop(.64, `rgba(${light.join(',')}, ${alpha})`);
+          gradient.addColorStop(1, `rgba(${tint}, 0)`);
           ctx.strokeStyle = gradient;
           ctx.lineWidth = index % 6 === 0 ? 1.05 : .55;
-          ctx.shadowColor = 'rgba(121,250,245,.8)';
+          ctx.shadowColor = glow;
           ctx.shadowBlur = index % 6 === 0 ? 8 : 3;
           for (let x = 0; x <= w + 4; x += 4) {
             const u = x / w;
@@ -255,9 +310,67 @@ function attachMenuWaves(items) {
   stopMenuWave = () => { cancelAnimationFrame(frame); stopMenuWave = () => {}; };
 }
 
+const fallbackPageColors = {
+  home: '#2B4A42', codex: '#2B4A42', characters: '#8D4C24',
+  world: '#416476', admin: '#5D4D75',
+};
+
+function hexRgb(hex) {
+  const match = /^#([a-f\d]{6})$/i.exec(hex || '');
+  if (!match) return [43, 74, 66];
+  const value = Number.parseInt(match[1], 16);
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+
+function hexOf(rgb) {
+  return '#' + rgb.map(channel => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+function blendRgb(from, to, amount) {
+  return from.map((part, index) => part * (1 - amount) + to[index] * amount);
+}
+
+function luminance(rgb) {
+  const linear = rgb.map(value => {
+    const channel = value / 255;
+    return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+  });
+  return linear[0] * .2126 + linear[1] * .7152 + linear[2] * .0722;
+}
+
+function themePalette(hex) {
+  const color = hexRgb(hex);
+  const background = [12, 24, 37];
+  let bright = color;
+  // Reach readable contrast over the dark panels without altering the chosen base.
+  for (let i = 1; i <= 20 && (luminance(bright) + .05) / (luminance(background) + .05) < 5; i++) {
+    bright = blendRgb(color, [255, 255, 255], i / 20);
+  }
+  return {
+    '--theme-base': hexOf(color),
+    '--theme-light': hexOf(bright),
+    '--theme-soft': hexOf(blendRgb(color, [245, 255, 252], .47)),
+    '--theme-deep': hexOf(blendRgb(color, background, .65)),
+    '--theme-glow': `rgba(${color.join(', ')}, .32)`,
+    '--theme-panel': `rgba(${color.join(', ')}, .18)`,
+    '--theme-border': `rgba(${color.join(', ')}, .48)`,
+    '--theme-rgb': color.join(','),
+  };
+}
+
+function applySceneTheme(scene = sceneForPath(location.pathname)) {
+  const base = state.settings.themeColors?.[scene] || fallbackPageColors[scene] || fallbackPageColors.home;
+  const palette = themePalette(base);
+  for (const [name, value] of Object.entries(palette)) {
+    document.documentElement.style.setProperty(name, value);
+  }
+  document.documentElement.dataset.scene = scene;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', palette['--theme-deep']);
+}
+
 function applySiteIdentity() {
   const s = state.settings;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', s.themeColor);
+  applySceneTheme();
   const existing = document.querySelector('link[rel="icon"]');
   if (assetUrl('icon')) {
     const icon = existing || document.createElement('link');
@@ -267,44 +380,74 @@ function applySiteIdentity() {
   } else existing?.remove();
 }
 
-let transitionId = 0;
+let navigationSequence = 0;
+let readyApi = new Map();
+let readySystem = new Map();
 
-function captureCurrentPage() {
-  const current = app.firstElementChild;
-  if (!current) return null;
-  const previous = document.createElement('div');
-  previous.className = 'page-outgoing';
-  previous.setAttribute('aria-hidden', 'true');
-  previous.inert = true;
-  previous.style.top = `${-window.scrollY}px`;
-  const snapshot = current.cloneNode(true);
-  snapshot.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
-  previous.append(snapshot);
-  document.body.append(previous);
-  return previous;
+// Fetch destinations before the browser snapshots the current screen.
+async function prefetchPage(path, apiCache, systemCache) {
+  const url = new URL(path, location.origin);
+  const pathname = url.pathname;
+  const requests = [];
+  const usesIndex = pathname.startsWith('/codice') || pathname.startsWith('/admin/codice');
+  if (usesIndex && !state.entries.length) requests.push(loadIndex());
+  if (/^\/codice\/[a-z0-9-]+$/.test(pathname)) {
+    const slug = pathname.split('/')[2];
+    const query = url.searchParams.get('preview') === '1' ? '?preview=1' : '';
+    const key = `codices/${slug}${query}`;
+    requests.push(api(key).then(value => apiCache.set(key, { value }), error => apiCache.set(key, { error })));
+  }
+  const editMatch = /^\/admin\/codice\/editar\/([a-z0-9-]+)$/.exec(pathname);
+  if (editMatch && state.isAdmin) {
+    const key = `codices/${editMatch[1]}`;
+    requests.push(api(key).then(value => apiCache.set(key, { value }), error => apiCache.set(key, { error })));
+  }
+  if (pathname === '/admin/tags' && state.isAdmin) {
+    requests.push(api('tags').then(value => apiCache.set('tags', { value }), error => apiCache.set('tags', { error })));
+  }
+  if (pathname === '/admin/site' && state.isAdmin) {
+    for (const key of ['/system/site-pages', '/system/site-config']) {
+      requests.push(siteRequest(key).then(value => systemCache.set(key, { value }), error => systemCache.set(key, { error })));
+    }
+  }
+  await Promise.all(requests);
 }
 
 async function changePage(path, push = true) {
-  const version = ++transitionId;
-  document.querySelectorAll('.page-outgoing').forEach(element => element.remove());
-  app.classList.remove('page-arriving', 'page-initial');
-  const outgoing = captureCurrentPage();
-  if (push && location.pathname + location.search !== path) history.pushState({}, '', path);
-  window.scrollTo({ top: 0, behavior: 'instant' });
-  await route();
-  if (version !== transitionId) { outgoing?.remove(); return; }
-  if (!outgoing || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    outgoing?.remove();
+  const sequence = ++navigationSequence;
+  const current = location.pathname + location.search;
+  if (current === path && push) return;
+  const apiCache = new Map();
+  const systemCache = new Map();
+  try {
+    await prefetchPage(path, apiCache, systemCache);
+  } catch (error) {
+    if (sequence === navigationSequence) console.warn('Preloading failed:', error);
+  }
+  if (sequence !== navigationSequence) return;
+  readyApi = apiCache;
+  readySystem = systemCache;
+  document.activeViewTransition?.skipTransition();
+  const type = 'crossfade';
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const commit = async () => {
+    if (push && location.pathname + location.search !== path) history.pushState({}, '', path);
+    window.scrollTo(0, 0);
+    await route();
+    if (readyApi === apiCache) readyApi = new Map();
+    if (readySystem === systemCache) readySystem = new Map();
+  };
+  if (!document.startViewTransition || reduced || !app.firstElementChild) {
+    await commit();
     return;
   }
-  // The next page appears on top while the previous page retreats.
-  void app.offsetWidth;
-  app.classList.add('page-arriving');
-  outgoing.classList.add('is-leaving');
-  window.setTimeout(() => {
-    outgoing.remove();
-    if (version === transitionId) app.classList.remove('page-arriving');
-  }, 490);
+  document.documentElement.dataset.transition = type;
+  const transition = document.startViewTransition(commit);
+  try { await transition.finished; }
+  catch (error) { console.warn('Transition interrupted:', error); }
+  finally {
+    if (sequence === navigationSequence) delete document.documentElement.dataset.transition;
+  }
 }
 function navigate(path) { return changePage(path, true); }
 
@@ -327,6 +470,19 @@ const particleDirections = [
   ['up-right', 'Diagonal superior direita'], ['down-left', 'Diagonal inferior esquerda'],
   ['down-right', 'Diagonal inferior direita'],
 ];
+const particleStyles = [
+  ['drift', 'Luzes flutuantes'],
+  ['wiggle', 'Movimento ondulante'],
+  ['ember', 'Brasas / fogo'],
+  ['firefly', 'Pirilampos'],
+  ['snow', 'Flocos de neve'],
+  ['spark', 'Faíscas velozes'],
+  ['spiral', 'Espirais arcanas'],
+  ['rain', 'Chuva luminosa'],
+  ['dust', 'Poeira mágica'],
+];
+const knownParticleStyles = new Set(particleStyles.map(([id]) => id));
+
 
 function sceneForPath(pathname) {
   if (pathname === '/') return 'home';
@@ -336,49 +492,95 @@ function sceneForPath(pathname) {
 }
 
 function drawSceneEffectsAfterSettings() {
-  document.querySelector('.fx-particles')?.remove();
+  const backdrop = document.querySelector('#scene-atmosphere');
+  backdrop?.querySelector('.fx-particles')?.replaceChildren();
   drawSceneEffects();
+}
+
+function sceneAtmosphere() {
+  let backdrop = document.querySelector('#scene-atmosphere');
+  if (!backdrop) {
+    backdrop = document.createElement('div');
+    backdrop.id = 'scene-atmosphere';
+    backdrop.setAttribute('aria-hidden', 'true');
+    const particleLayer = document.createElement('div');
+    particleLayer.className = 'fx-particles';
+    backdrop.append(particleLayer);
+    document.body.prepend(backdrop);
+  }
+  return backdrop;
 }
 
 function drawSceneEffects() {
   const scene = sceneForPath(location.pathname);
-  const container = document.querySelector('.title-screen, .scene');
-  if (!container) return;
-  const config = state.settings;
+  const backdrop = sceneAtmosphere();
   const assetKind = sceneAssetKinds[scene];
-  const version = config.assets?.[assetKind];
   const image = assetUrl(assetKind) ? `url("${assetUrl(assetKind)}")` : 'none';
-  const intensity = config.backgroundEffects?.[scene] || { overlay: 48, vignette: 55 };
-  container.style.setProperty('--scene-bg', image);
-  container.style.setProperty('--overlay-opacity', String(intensity.overlay / 100));
-  container.style.setProperty('--vignette-opacity', String(intensity.vignette / 100));
-  const layer = document.createElement('div');
-  layer.className = 'fx-particles';
-  layer.setAttribute('aria-hidden', 'true');
+  const intensity = state.settings.backgroundEffects?.[scene] || { overlay: 48, vignette: 55 };
+  const color = state.settings.themeColors?.[scene] || fallbackPageColors[scene];
+  const visualKey = `${scene}|${image}|${intensity.overlay}|${intensity.vignette}|${color}`;
+  if (backdrop.dataset.visualKey !== visualKey) {
+    const layerVisual = document.createElement('div');
+    layerVisual.className = 'atmosphere-visual';
+    layerVisual.style.setProperty('--scene-bg', image);
+    layerVisual.style.setProperty('--overlay-opacity', String(intensity.overlay / 100));
+    layerVisual.style.setProperty('--vignette-opacity', String(intensity.vignette / 100));
+    layerVisual.style.setProperty('--visual-accent', color);
+    backdrop.prepend(layerVisual);
+    const oldVisuals = [...backdrop.querySelectorAll('.atmosphere-visual')].filter(el => el !== layerVisual);
+    oldVisuals.forEach(el => el.classList.remove('is-active'));
+    const first = !oldVisuals.length;
+    if (first) layerVisual.classList.add('is-active');
+    else requestAnimationFrame(() => layerVisual.classList.add('is-active'));
+    for (const old of oldVisuals) window.setTimeout(() => old.remove(), 600);
+    backdrop.dataset.visualKey = visualKey;
+  }
+  backdrop.dataset.scene = scene;
+  const layer = backdrop.querySelector('.fx-particles');
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let remaining = reduced ? 20 : 180;
-  for (const preset of config.particleLayers || []) {
+  const allowed = new Set();
+  for (const preset of state.settings.particleLayers || []) {
     if (!preset.enabled || (preset.page !== 'all' && preset.page !== scene)) continue;
-    const vector = movementVectors[preset.direction] || [0, -1];
     const count = Math.min(preset.count, remaining);
     remaining -= count;
+    allowed.add(preset.id);
+    if (layer.querySelector(`[data-layer="${preset.id}"]`)) continue;
+    const group = document.createElement('div');
+    group.className = 'particle-group';
+    group.dataset.layer = preset.id;
+    const vector = movementVectors[preset.direction] || [0, -1];
     for (let i = 0; i < count; i++) {
       const dot = document.createElement('span');
-      dot.className = 'fx-particle';
+      const style = knownParticleStyles.has(preset.style) ? preset.style : 'drift';
+      dot.className = `fx-particle particle-${style}`;
+      const travel = .3 + Math.random() * .35;
+      const dx = vector[0] * Math.min(window.innerWidth, 1300) * travel;
+      const dy = vector[1] * Math.min(window.innerHeight, 1000) * travel;
+      const sway = 12 + Math.random() * 24;
+      const length = preset.speed * (.8 + Math.random() * .4);
+      const position = value => `${Math.round(value)}px`;
+      const color = /^#[0-9a-f]{6}$/i.test(preset.color) ? preset.color : '#D3F4ED';
       dot.style.cssText = [
         `left:${Math.random() * 100}%`, `top:${Math.random() * 100}%`,
-        `--dot-color:${preset.color}`, `--dot-opacity:${preset.opacity}`,
+        `--dot-color:${color}`, `--dot-opacity:${preset.opacity}`,
         `--dot-size:${preset.size}px`,
-        `--dx:${Math.round(vector[0] * Math.min(window.innerWidth, 1300) * (.3 + Math.random() * .35))}px`,
-        `--dy:${Math.round(vector[1] * Math.min(window.innerHeight, 1000) * (.3 + Math.random() * .35))}px`,
-        `--dot-duration:${(preset.speed * (.8 + Math.random() * .4)).toFixed(2)}s`,
-        `--dot-delay:${(-Math.random() * preset.speed).toFixed(2)}s`,
+        `--dx:${position(dx)}`, `--dy:${position(dy)}`,
+        `--dx25:${position(dx * .25)}`, `--dy25:${position(dy * .25)}`,
+        `--dx50:${position(dx * .5)}`, `--dy50:${position(dy * .5)}`,
+        `--dx75:${position(dx * .75)}`, `--dy75:${position(dy * .75)}`,
+        `--sway:${position(sway)}`, `--sway-negative:${position(-sway)}`,
+        `--dot-duration:${length.toFixed(2)}s`,
+        `--dot-delay:${(-Math.random() * length).toFixed(2)}s`,
       ].join(';');
-      layer.append(dot);
+      group.append(dot);
     }
+    layer.append(group);
     if (remaining <= 0) break;
   }
-  container.prepend(layer);
+  layer.querySelectorAll('.particle-group').forEach(group => {
+    if (!allowed.has(group.dataset.layer)) group.remove();
+  });
 }
 
 function renderHome() {
@@ -401,7 +603,6 @@ function renderHome() {
         ${menuOptions.map((item, index) => {
           const inner = `<span class="menu-selection-light" aria-hidden="true"></span>
             <canvas class="menu-wave-canvas" aria-hidden="true"></canvas>
-            <span class="menu-glyph" aria-hidden="true">✦</span>
             <span class="menu-label">${item.name}</span>`;
           return item.url
             ? `<a href="${item.url}" class="title-menu-item ${index === 0 ? 'is-selected' : ''}" data-nav data-menu-index="${index}">${inner}</a>`
@@ -471,7 +672,6 @@ function entryList(selectedSlug) {
 
 function sidebar(selectedSlug) {
   return `<aside class="sidebar" aria-label="Índice do Códice">
-    <div class="sidebar-title"><span>ÍNDICE DO MUNDO</span></div>
     <label for="search">PESQUISAR</label>
     <input id="search" type="search" value="${escapeHtml(state.search)}" placeholder="Ilha, nação, palavra-chave…" autocomplete="off">
     <label for="tag-filter">FILTRAR POR MARCADOR</label>
@@ -515,7 +715,7 @@ async function renderCodex(slug) {
     <p class="metadata">${escapeHtml(item.category)}</p>
     <div class="tags">${item.tags.map(tag => `<button type="button" class="tag" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</button>`).join('')}</div>
     ${item.summary ? `<p class="reader-summary">${escapeHtml(item.summary)}</p>` : ''}
-    ${item.banner ? `<button type="button" id="open-banner" class="codex-banner" aria-label="Ampliar imagem de ${escapeHtml(item.title)}"><img src="${escapeHtml(item.banner)}" draggable="false" alt="Banner de ${escapeHtml(item.title)}"><span>AMPLIAR IMAGEM</span></button>` : ''}
+    ${item.banner ? `<button type="button" id="open-banner" class="codex-banner" data-position="${escapeHtml(item.bannerPosition || 'center')}" data-fit="${item.bannerFit === 'contain' ? 'contain' : 'cover'}" aria-label="Ampliar imagem de ${escapeHtml(item.title)}"><img class="codex-banner-image" src="${escapeHtml(item.banner)}" draggable="false" alt="Banner de ${escapeHtml(item.title)}"><span>AMPLIAR IMAGEM</span></button>` : ''}
     ${state.isAdmin ? `<div class="reader-actions">
       <button type="button" class="ui-button" id="edit-codex">EDITAR VERBETE</button>
       <button type="button" class="ui-button secondary" id="preview-codex">${preview ? 'VISÃO DO MESTRE' : 'PRÉVIA DO VISITANTE'}</button>
@@ -536,7 +736,11 @@ async function renderCodex(slug) {
   </div></div>`;
   bindSidebar(slug);
   document.querySelectorAll('.codex-body').forEach(section => addAutomaticLinks(section, slug));
-  document.querySelector('#open-banner')?.addEventListener('click', () => openBannerViewer(item.banner, item.title));
+  const bannerNode = document.querySelector('#open-banner');
+  if (bannerNode) {
+    disposeCodexBanner = mountCodexBanner(bannerNode, item.bannerZoom, item.bannerFit, item.bannerPosition);
+    bannerNode.addEventListener('click', () => openBannerViewer(item.banner, item.title));
+  }
   document.querySelector('#edit-codex')?.addEventListener('click', () => navigate(`/admin/codice/editar/${slug}`));
   document.querySelector('#preview-codex')?.addEventListener('click', () => navigate(`/codice/${slug}${preview ? '' : '?preview=1'}`));
 }
@@ -571,7 +775,7 @@ function renderLogin() {
 
 function freshEntry() {
   return {
-    slug: '', title: '', category: 'Geral', summary: '', tags: [], aliases: [], parentSlug: null, banner: '', publicLevel: 0,
+    slug: '', title: '', category: 'Geral', summary: '', tags: [], aliases: [], parentSlug: null, banner: '', bannerPosition: 'center', bannerFit: 'cover', bannerZoom: 100, publicLevel: 0,
     content: { general: '', specific: '', professional: '' },
   };
 }
@@ -650,6 +854,19 @@ async function renderEditor(editSlug = null) {
         <div class="image-choice"><input id="banner" readonly placeholder="Nenhuma imagem selecionada" value="${escapeHtml(item.banner || '')}">
           <button type="button" class="ui-button secondary" id="choose-banner">BIBLIOTECA</button>
           <button type="button" class="ui-button secondary" id="clear-banner">LIMPAR</button></div>
+        <div class="editor-grid banner-controls">
+          <div><label for="bannerPosition">POSIÇÃO NO BANNER</label><select id="bannerPosition">
+            <option value="top" ${item.bannerPosition === 'top' ? 'selected' : ''}>Topo</option>
+            <option value="center" ${!item.bannerPosition || item.bannerPosition === 'center' ? 'selected' : ''}>Centro</option>
+            <option value="bottom" ${item.bannerPosition === 'bottom' ? 'selected' : ''}>Base</option>
+          </select></div>
+          <div><label for="bannerFit">ENQUADRAMENTO</label><select id="bannerFit">
+            <option value="cover" ${item.bannerFit !== 'contain' ? 'selected' : ''}>Preencher e recortar</option>
+            <option value="contain" ${item.bannerFit === 'contain' ? 'selected' : ''}>Mostrar imagem inteira</option>
+          </select></div>
+        </div>
+        <label for="bannerZoom">ZOOM DO BANNER <output id="bannerZoomValue">${item.bannerZoom ?? 100}%</output></label>
+        <input id="bannerZoom" class="banner-zoom" type="range" min="70" max="140" step="5" value="${item.bannerZoom ?? 100}">
         <label for="summary">RESUMO PÚBLICO OPCIONAL</label>
         <textarea id="summary" rows="3" maxlength="1000">${escapeHtml(item.summary)}</textarea>
         <div class="editor-content">
@@ -664,6 +881,7 @@ async function renderEditor(editSlug = null) {
     </section></div></div>`;
   document.querySelector('#choose-banner').addEventListener('click', () => openAssetLibrary(value => { document.querySelector('#banner').value = value; }));
   document.querySelector('#clear-banner').addEventListener('click', () => { document.querySelector('#banner').value = ''; });
+  document.querySelector('#bannerZoom').addEventListener('input', event => { document.querySelector('#bannerZoomValue').textContent = `${event.target.value}%`; });
   let slugTouched = Boolean(editSlug);
   document.querySelector('#slug').addEventListener('input', () => { slugTouched = true; });
   document.querySelector('#title').addEventListener('input', event => {
@@ -683,6 +901,7 @@ async function renderEditor(editSlug = null) {
       title: value('title').trim(), slug: value('slug').trim(), category: value('category').trim(),
       summary: value('summary'), tags: list(value('tags')), aliases: list(value('aliases')),
       parentSlug: value('parentSlug') || null, banner: value('banner'),
+      bannerPosition: value('bannerPosition'), bannerFit: value('bannerFit'), bannerZoom: Number(value('bannerZoom')),
       publicLevel: Number(value('public-level')),
       content: Object.fromEntries(knowledgeLevels.map(([key]) => [key, value(`content-${key}`)])),
     };
@@ -756,12 +975,13 @@ async function renderTagManager() {
 
 function particleLayerEditor(layer, index) {
   const select = (field, options) => `<select data-particle-field="${field}">
-    ${options.map(([value, label]) => `<option value="${value}" ${layer[field] === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
+    ${options.map(([value, label]) => `<option value="${value}" ${(layer[field] ?? (field === 'style' ? 'drift' : '')) === value ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
   return `<fieldset class="particle-editor" data-particle-index="${index}"><legend>CAMADA ${index + 1}</legend>
     <div class="particle-head"><label class="particle-toggle"><input type="checkbox" data-particle-field="enabled" ${layer.enabled ? 'checked' : ''}> Ativar camada</label>
       <button type="button" class="ui-button danger" data-remove-particle="${index}">REMOVER CAMADA</button></div>
     <div class="particle-fields">
       <label>Nome <input data-particle-field="name" maxlength="50" value="${escapeHtml(layer.name)}"></label>
+      <label>Tipo ${select('style', particleStyles)}</label>
       <label>Exibir em ${select('page', [['all','Todas as páginas'], ...((state.pages.length ? state.pages.map(page => [page.id, page.label]) : Object.entries(sceneLabels)))])}</label>
       <label>Cor <input data-particle-field="color" type="color" value="${escapeHtml(layer.color)}"></label>
       <label>Direção ${select('direction', particleDirections)}</label>
@@ -791,6 +1011,7 @@ async function renderSiteSettings() {
   const s = freshSettings;
   const draftAssets = { ...s.assets };
   const draftEffects = structuredClone(s.backgroundEffects || {});
+  const draftColors = { ...fallbackPageColors, ...(s.themeColors || {}) };
   let draftLayers = structuredClone(s.particleLayers || []);
   let selectedPage = pages[0]?.id || '';
 
@@ -863,12 +1084,37 @@ async function renderSiteSettings() {
     if (!page) { target.textContent = ''; return; }
     const fx = draftEffects[page.id] || { overlay: 45, vignette: 55 };
     target.innerHTML = `<div class="page-settings-card">
+      <div class="page-theme-control">
+        <label for="page-theme-hex">COR DO TEMA</label>
+        <div class="theme-color-pair">
+          <input id="page-theme-picker" type="color" value="${escapeHtml(draftColors[page.id])}">
+          <input id="page-theme-hex" type="text" maxlength="7" spellcheck="false" pattern="#[0-9a-fA-F]{6}" value="${escapeHtml(draftColors[page.id])}">
+          <div id="page-theme-preview" class="page-theme-preview" aria-hidden="true"></div>
+        </div>
+      </div>
       <div class="settings-slider"><label for="page-overlay">ESCURECIMENTO <output id="page-overlay-out">${fx.overlay}%</output></label>
         <input id="page-overlay" type="range" min="0" max="100" step="1" value="${fx.overlay}"></div>
       <div class="settings-slider"><label for="page-vignette">VINHETA <output id="page-vignette-out">${fx.vignette}%</output></label>
         <input id="page-vignette" type="range" min="0" max="100" step="1" value="${fx.vignette}"></div>
       ${assetField(page.backgroundKind, 'Imagem de fundo', draftAssets[page.backgroundKind])}
     </div>`;
+    const picker = target.querySelector('#page-theme-picker');
+    const hexInput = target.querySelector('#page-theme-hex');
+    const preview = target.querySelector('#page-theme-preview');
+    const updateColor = value => {
+      if (!/^#[0-9a-f]{6}$/i.test(value)) return;
+      const normalized = value.toUpperCase();
+      draftColors[page.id] = normalized;
+      picker.value = normalized;
+      hexInput.value = normalized;
+      const shades = themePalette(normalized);
+      preview.style.background = `linear-gradient(110deg, ${shades['--theme-deep']}, ${shades['--theme-base']}, ${shades['--theme-soft']}, ${shades['--theme-light']})`;
+    };
+    picker.addEventListener('input', () => updateColor(picker.value));
+    hexInput.addEventListener('input', () => {
+      if (/^#[0-9a-f]{6}$/i.test(hexInput.value)) updateColor(hexInput.value);
+    });
+    updateColor(draftColors[page.id]);
     target.querySelectorAll('input[type="range"]').forEach(slider => {
       slider.addEventListener('input', () => {
         const output = document.querySelector(`#${slider.id}-out`);
@@ -892,7 +1138,7 @@ async function renderSiteSettings() {
     if (draftLayers.length >= 8) { notice('Limite de 8 camadas.', true); return; }
     draftLayers.push({ id: `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       name: `Camada ${draftLayers.length + 1}`, enabled: true, page: 'all',
-      color: '#B5ECDD', count: 12, speed: 22, opacity: .45, size: 2, direction: 'up' });
+      color: '#B5ECDD', count: 12, speed: 22, opacity: .45, size: 2, direction: 'up', style: 'drift' });
     showLayers();
   });
   document.querySelector('#particle-editor-list').addEventListener('click', event => {
@@ -945,6 +1191,7 @@ async function renderSiteSettings() {
       const fields = ['siteName', 'tagline', 'description', 'shareTitle', 'shareDescription', 'siteUrl', 'themeColor'];
       const payload = Object.fromEntries(fields.map(id => [id, form.querySelector(`#${id}`).value]));
       payload.backgroundEffects = draftEffects;
+      payload.themeColors = draftColors;
       payload.particleLayers = draftLayers;
       payload.assets = draftAssets;
       const result = await siteRequest('/system/site-config', {
@@ -975,11 +1222,14 @@ async function renderAdmin(pathname) {
 let routeId = 0;
 async function route() {
   stopMenuWave();
+  disposeCodexBanner();
+  disposeCodexBanner = () => {};
   const callId = ++routeId;
   const pathname = location.pathname;
   const section = pathname === '/' ? '' : pathname.startsWith('/codice') ? 'Códice' :
     pathname.startsWith('/admin') ? 'Administração' : pathname === '/mundo' ? 'Mundo' : 'Personagens';
   document.title = section ? `${section} | ${state.settings.siteName}` : state.settings.siteName;
+  applySceneTheme();
   if (pathname !== '/') document.body.className = 'on-inner-page';
   try {
     if (pathname === '/') renderHome();
@@ -1022,6 +1272,5 @@ window.addEventListener('popstate', () => { changePage(location.pathname + locat
   else console.warn('Site settings unavailable:', info.reason);
   applySiteIdentity();
   await route();
-  app.classList.add('page-initial');
-  window.setTimeout(() => app.classList.remove('page-initial'), 400);
+
 })();

@@ -3,10 +3,42 @@
     "",
     "backgrounds",
     "banners",
+    "banners/islands",
     "characters",
-    "logos"
+    "logos",
+    "races"
   ],
   "files": [
+    {
+      "name": "A Bright Beginning.jpg",
+      "folder": "backgrounds",
+      "url": "/assets/backgrounds/A%20Bright%20Beginning.jpg",
+      "bytes": 278269
+    },
+    {
+      "name": "A Quiet Library.jpg",
+      "folder": "backgrounds",
+      "url": "/assets/backgrounds/A%20Quiet%20Library.jpg",
+      "bytes": 217330
+    },
+    {
+      "name": "Grandblue Fantasy.jpg",
+      "folder": "backgrounds",
+      "url": "/assets/backgrounds/Grandblue%20Fantasy.jpg",
+      "bytes": 328743
+    },
+    {
+      "name": "Sunset Skies.jpg",
+      "folder": "backgrounds",
+      "url": "/assets/backgrounds/Sunset%20Skies.jpg",
+      "bytes": 277729
+    },
+    {
+      "name": "Union.webp",
+      "folder": "banners/islands",
+      "url": "/assets/banners/islands/Union.webp",
+      "bytes": 500102
+    },
     {
       "name": "fabula_ultima_trans.png",
       "folder": "logos",
@@ -18,6 +50,18 @@
       "folder": "logos",
       "url": "/assets/logos/fabula_ultima.png",
       "bytes": 184964
+    },
+    {
+      "name": "FP.png",
+      "folder": "logos",
+      "url": "/assets/logos/FP.png",
+      "bytes": 10156
+    },
+    {
+      "name": "Caprinae.png",
+      "folder": "races",
+      "url": "/assets/races/Caprinae.png",
+      "bytes": 1428151
     }
   ]
 }

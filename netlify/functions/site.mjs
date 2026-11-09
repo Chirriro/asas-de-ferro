@@ -12,15 +12,20 @@ export const sitePages = Object.freeze([
   { id: 'admin', label: 'Administração', path: '/admin', backgroundKind: 'background-admin' },
 ]);
 export const sceneNames = sitePages.map(page => page.id);
+export const defaultThemeColors = Object.freeze({
+  home: '#2B4A42', codex: '#2B4A42', characters: '#8D4C24',
+  world: '#416476', admin: '#5D4D75',
+});
 const sceneKinds = sitePages.map(page => page.backgroundKind);
 const assetKinds = new Set(['logo', 'icon', 'social', ...sceneKinds]);
 export const defaultBackgroundEffects = Object.freeze(Object.fromEntries(
   sceneNames.map(scene => [scene, { overlay: scene === 'home' ? 40 : 52, vignette: scene === 'home' ? 55 : 45 }]),
 ));
 const particleDirections = new Set(['up', 'down', 'left', 'right', 'up-left', 'up-right', 'down-left', 'down-right']);
+const particleStyles = new Set(['drift', 'wiggle', 'ember', 'firefly', 'snow', 'spark', 'spiral', 'rain', 'dust']);
 const particlePages = new Set(['all', ...sceneNames]);
 const defaultParticleLayers = [
-  { id: 'default-stars', name: 'Luzes celestes', enabled: true, page: 'all', color: '#D3F4ED', count: 28, speed: 24, opacity: 0.42, size: 2, direction: 'up-right' },
+  { id: 'default-stars', name: 'Luzes celestes', enabled: true, page: 'all', color: '#D3F4ED', count: 28, speed: 24, opacity: 0.42, size: 2, direction: 'up-right', style: 'drift' },
 ];
 const baseSettings = Object.freeze({
   siteName: 'Asas de Ferro',
@@ -32,6 +37,7 @@ const baseSettings = Object.freeze({
   themeColor: '#101b27',
   assets: { logo: 0, background: 0, icon: 0, social: 0, 'background-codex': 0, 'background-characters': 0, 'background-world': 0, 'background-admin': 0 },
   backgroundEffects: defaultBackgroundEffects,
+  themeColors: defaultThemeColors,
   particleLayers: defaultParticleLayers,
 });
 
@@ -40,6 +46,7 @@ export async function getSiteSettings(store = settingsStore()) {
   return {
     ...baseSettings, ...(saved || {}),
     assets: { ...baseSettings.assets, ...(saved?.assets || {}) },
+    themeColors: { ...defaultThemeColors, ...(saved?.themeColors || {}) },
     backgroundEffects: Object.fromEntries(sceneNames.map(scene => [scene, {
       ...defaultBackgroundEffects[scene], ...(saved?.backgroundEffects?.[scene] || {}),
     }])),
@@ -70,6 +77,18 @@ export function normalizeSettings(input, prior) {
   }
   if (typeof input.themeColor !== 'string' || !/^#[a-f0-9]{6}$/i.test(input.themeColor)) throw new Error('Cor do tema inválida.');
   next.themeColor = input.themeColor.toUpperCase();
+  if (input.themeColors !== undefined) {
+    if (!input.themeColors || typeof input.themeColors !== 'object' || Array.isArray(input.themeColors)) {
+      throw new Error('Cores das páginas inválidas.');
+    }
+    next.themeColors = Object.fromEntries(sceneNames.map(scene => {
+      const hex = input.themeColors[scene];
+      if (typeof hex !== 'string' || !/^#[0-9a-f]{6}$/i.test(hex)) {
+        throw new Error('Cor de página inválida.');
+      }
+      return [scene, hex.toUpperCase()];
+    }));
+  }
   if (input.backgroundEffects !== undefined) {
     if (!input.backgroundEffects || typeof input.backgroundEffects !== 'object' || Array.isArray(input.backgroundEffects)) {
       throw new Error('Intensidades de fundo inválidas.');
@@ -105,12 +124,13 @@ export function normalizeSettings(input, prior) {
         typeof layer.speed !== 'number' || !Number.isFinite(layer.speed) || layer.speed < 2 || layer.speed > 100 ||
         typeof layer.opacity !== 'number' || !Number.isFinite(layer.opacity) || layer.opacity < 0 || layer.opacity > 1 ||
         typeof layer.size !== 'number' || !Number.isFinite(layer.size) || layer.size < 1 || layer.size > 12 ||
-        !particleDirections.has(layer.direction)) throw new Error('Configuração de partículas inválida.');
+        !particleDirections.has(layer.direction) ||
+        !particleStyles.has(layer.style ?? 'drift')) throw new Error('Configuração de partículas inválida.');
       total += layer.enabled ? layer.count : 0;
       ids.add(layer.id);
       return { id: layer.id, name: layer.name.trim(), enabled: layer.enabled, page: layer.page,
         color: layer.color.toUpperCase(), count: layer.count, speed: layer.speed,
-        opacity: layer.opacity, size: layer.size, direction: layer.direction };
+        opacity: layer.opacity, size: layer.size, direction: layer.direction, style: layer.style ?? 'drift' };
     });
     if (total > 180) throw new Error('Limite de 180 partículas ativas excedido.');
   }
@@ -193,7 +213,7 @@ export default async function site(request) {
     return responseJson({ error: 'Rota não encontrada.' }, 404);
   } catch (error) {
     if (error instanceof SyntaxError) return responseJson({ error: 'JSON inválido.' }, 400);
-    if (error?.message && /^(Configurações inválidas|Campo inválido|Informe uma URL|Use a origem HTTPS|Cor do tema inválida)/.test(error.message)) return responseJson({ error: error.message }, 400);
+    if (error?.message && /^(Configurações inválidas|Campo inválido|Informe uma URL|Use a origem HTTPS|Cor do tema inválida|Cor de página inválida|Cores das páginas inválidas)/.test(error.message)) return responseJson({ error: error.message }, 400);
     console.error('Site settings error:', error);
     return responseJson({ error: 'Erro interno ao salvar as configurações.' }, 500);
   }

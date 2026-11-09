@@ -52,6 +52,9 @@ export function publicCodex(codex, isAdmin = false, secret = '') {
     updatedAt: codex.updatedAt,
     parentSlug: hidden ? null : codex.parentSlug || null,
     banner: hidden ? '' : (codex.banner || ''),
+    bannerPosition: hidden ? 'center' : (codex.bannerPosition || 'center'),
+    bannerFit: hidden ? 'cover' : (codex.bannerFit === 'contain' ? 'contain' : 'cover'),
+    bannerZoom: hidden ? 100 : (codex.bannerZoom ?? 100),
     content: {},
   };
   levels.forEach((level, index) => {
@@ -86,6 +89,12 @@ export function validateCodex(payload) {
   if (parentSlug !== null && (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(parentSlug) || parentSlug === slug)) throw new Error('Verbete pai inválido.');
   const banner = payload.banner || '';
   if (!validAssetPath(banner)) throw new Error('Imagem de banner inválida.');
+  const bannerPosition = payload.bannerPosition ?? 'center';
+  const bannerFit = payload.bannerFit === 'auto' ? 'cover' : (payload.bannerFit ?? 'cover');
+  if (!['top', 'center', 'bottom'].includes(bannerPosition)) throw new Error('Posição do banner inválida.');
+  if (!['auto', 'cover', 'contain'].includes(bannerFit)) throw new Error('Ajuste do banner inválido.');
+  const bannerZoom = payload.bannerZoom ?? 100;
+  if (typeof bannerZoom !== 'number' || !Number.isInteger(bannerZoom) || bannerZoom < 70 || bannerZoom > 140) throw new Error('Zoom do banner inválido.');
   const tags = cleanList(payload.tags || [], 50);
   const aliases = cleanList(payload.aliases || [], 120);
   if (!payload.content || typeof payload.content !== 'object') throw new Error('Conteúdo inválido.');
@@ -95,7 +104,7 @@ export function validateCodex(payload) {
     if (!hasValidSecretPairs(payload.content[level])) throw new Error(`Marcadores {{secret}} inválidos em ${level}.`);
     content[level] = payload.content[level];
   }
-  return { slug, title, category, summary, publicLevel, tags, aliases, parentSlug, banner, content, updatedAt: new Date().toISOString() };
+  return { slug, title, category, summary, publicLevel, tags, aliases, parentSlug, banner, bannerPosition, bannerFit, bannerZoom, content, updatedAt: new Date().toISOString() };
 }
 
 export function passwordHash(password, saltHex) {
