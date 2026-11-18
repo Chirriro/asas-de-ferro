@@ -12,14 +12,15 @@ const level = n => Number.isFinite(Number(n)) ? Number(n) : 0;
 async function request(route = '', options = {}) {
   const headers = { ...options.headers };
   if (options.method && options.method !== 'GET') headers['x-codex-request'] = '1';
-  const response = await fetch(`${dataBase}${route}`, { ...options, headers, credentials: 'same-origin' });
+  const response = await fetch(`${dataBase}${route}`, { cache: 'no-store', ...options, headers, credentials: 'same-origin' });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || `Erro HTTP ${response.status}`);
   return body;
 }
 export function invalidateCharacters() { rosterCache = null; profiles.clear(); }
 async function getRoster() { if (!rosterCache) rosterCache = request().then(r => r.entries).catch(e => { rosterCache = null; throw e; }); return rosterCache; }
-async function getProfile(slug) {
+async function getProfile(slug, fresh = false) {
+  if (fresh) profiles.delete(slug);
   if (!profiles.has(slug)) profiles.set(slug, request('/' + slug).then(r => r.character).catch(e => { profiles.delete(slug); throw e; }));
   return profiles.get(slug);
 }
@@ -42,6 +43,15 @@ function spriteFrame(value) {
 function frameStyle(value) {
   const { size, x, y } = spriteFrame(value);
   return `style="--character-sprite-size:${size / 100};--character-sprite-x:${x}%;--character-sprite-y:${y}%"`;
+}
+function applySpriteFrame(frame, transform) {
+  if (!frame) return;
+  const { size, x, y } = spriteFrame(transform);
+  frame.style.setProperty('--character-sprite-size', String(size / 100));
+  frame.style.setProperty('--character-sprite-x', `${x}%`);
+  frame.style.setProperty('--character-sprite-y', `${y}%`);
+  const image = frame.querySelector('img.character-portrait');
+  if (image) image.style.transform = `translate(${x - 6}%, ${y - 3}%) scale(${size / 100})`;
 }
 function back(label, href) { return `<a href="${href}" class="return-link" data-nav><span aria-hidden="true">←</span> ${label}</a>`; }
 function fieldTitle(value) { return `<h2 class="character-title">${value}</h2>`; }
@@ -71,7 +81,7 @@ function resourcesTemplate(profile) {
   return ['hp','mp','ip'].map((key, i) => `<div class="character-resource ${key}"><span>${['PV MÁXIMOS','PM MÁXIMOS','PI MÁXIMOS'][i]}</span><strong>${level(profile.resources[key]?.max)}</strong></div>`).join('');
 }
 export async function renderCharacterSheet(app, slug) {
-  const p = await getProfile(slug);
+  const p = await getProfile(slug, true);
   app.innerHTML = `<div class="scene inner-scene character-scene"><div class="inner-page">
     ${back('PERSONAGENS', '/personagens')}
     <div class="character-sheet" id="character-sheet-view">
@@ -105,6 +115,7 @@ export async function renderCharacterSheet(app, slug) {
     </div>
     <div class="character-download-row"><button class="ui-button" type="button" id="character-download">BAIXAR FICHA PNG</button><span id="character-download-status" role="status"></span></div>
   </div></div>`;
+  applySpriteFrame(app.querySelector('.character-sheet .character-sprite-wrap'), p.spriteTransform);
   app.querySelector('#character-download')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     const status = app.querySelector('#character-download-status');
@@ -154,7 +165,7 @@ export async function renderCharacterAdmin(app, navigate) {
 }
 
 export async function renderCharacterEditor(app, slug, navigate, openAssetLibrary) {
-  const p = await getProfile(slug);
+  const p = await getProfile(slug, true);
   app.innerHTML = `<div class="scene inner-scene"><div class="inner-page character-admin-page">
     ${back('GERENCIAR PERSONAGENS', '/admin/personagens')}
     <div class="panel-heading character-heading"><span class="overline">CONFIGURAÇÃO DO PERSONAGEM</span><h1>${esc(p.name)}</h1></div>
@@ -191,9 +202,7 @@ export async function renderCharacterEditor(app, slug, navigate, openAssetLibrar
   });
   const updateFrame = () => {
     const value = getFrame();
-    previewFrame.style.setProperty('--character-sprite-size', String(value.size / 100));
-    previewFrame.style.setProperty('--character-sprite-x', `${value.x}%`);
-    previewFrame.style.setProperty('--character-sprite-y', `${value.y}%`);
+    applySpriteFrame(previewFrame, value);
     for (const [key, amount] of Object.entries(value)) app.querySelector(`#sprite-${key}-value`).textContent = `${amount}%`;
   };
   for (const key of ['size', 'x', 'y']) app.querySelector(`#sprite-${key}`).addEventListener('input', updateFrame);
@@ -206,6 +215,7 @@ export async function renderCharacterEditor(app, slug, navigate, openAssetLibrar
     previewFrame.innerHTML = path
       ? `<img class="character-portrait" draggable="false" src="${esc(path)}" alt="Prévia">`
       : '<div class="character-no-sprite">◇</div>';
+    updateFrame();
   };
   app.querySelector('#character-pick').addEventListener('click', () => openAssetLibrary(setSprite));
   app.querySelector('#character-clear').addEventListener('click', () => setSprite(''));
@@ -216,7 +226,12 @@ export async function renderCharacterEditor(app, slug, navigate, openAssetLibrar
       return [key, value === '' ? null : Number(value)];
     }));
     try {
-      await request('/' + slug, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sprite: spriteInput.value, spriteTransform: getFrame(), maxOverrides: overrides }) });
+      const requestedFrame = getFrame();
+      const saved = await request('/' + slug, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sprite: spriteInput.value, spriteTransform: requestedFrame, maxOverrides: overrides }) });
+      const confirmed = saved.character?.spriteTransform;
+      if (!confirmed || ['size', 'x', 'y'].some(key => confirmed[key] !== requestedFrame[key])) {
+        throw new Error('Servidor não confirmou tamanho/posição. Instale os dois arquivos de backend deste pacote.');
+      }
       invalidateCharacters();
       app.querySelector('#notice').textContent = 'Alterações salvas.';
     } catch (error) { app.querySelector('#notice').textContent = error.message; }
