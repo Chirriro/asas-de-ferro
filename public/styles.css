@@ -998,3 +998,15 @@ dialog.image-viewer[open] {
   top: 17px;
   right: 17px;
 }
+
+/* V14: hide the enlarged image scrollbar while retaining scrolling. */
+dialog.image-viewer,
+dialog.image-viewer[open] {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+dialog.image-viewer::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

@@ -1,3 +1,4 @@
+import { prefetchCharacters, renderCharacterIndex, renderCharacterSheet, renderCharacterAdmin, renderCharacterEditor } from './characters.js';
 const app = document.querySelector('#app');
 const state = {
   isAdmin: false,
@@ -19,7 +20,7 @@ const knowledgeLevels = [
 let stopMenuWave = () => {};
 const menuOptions = [
   { name: 'CÓDICE', url: '/codice' },
-  { name: 'PERSONAGENS', url: null },
+  { name: 'PERSONAGENS', url: '/personagens' },
   { name: 'MUNDO', url: null },
   { name: 'ADMINISTRAÇÃO', url: '/admin' },
 ];
@@ -390,6 +391,9 @@ async function prefetchPage(path, apiCache, systemCache) {
   const pathname = url.pathname;
   const requests = [];
   const usesIndex = pathname.startsWith('/codice') || pathname.startsWith('/admin/codice');
+  if (pathname.startsWith('/personagens') || pathname.startsWith('/admin/personagens')) {
+    requests.push(prefetchCharacters(pathname));
+  }
   if (usesIndex && !state.entries.length) requests.push(loadIndex());
   if (/^\/codice\/[a-z0-9-]+$/.test(pathname)) {
     const slug = pathname.split('/')[2];
@@ -803,6 +807,7 @@ function renderDashboard() {
       <div class="panel-heading"><span class="overline">PAINEL DO MESTRE</span><h1>Administração</h1></div>
       <div class="dashboard-grid">
         <a class="dashboard-option" data-nav href="/admin/codice"><strong>Códice</strong></a>
+        <a class="dashboard-option" data-nav href="/admin/personagens"><strong>Personagens</strong></a>
         <a class="dashboard-option" data-nav href="/admin/site"><strong>Personalização</strong></a>
         <a class="dashboard-option" data-nav href="/admin/tags"><strong>Marcadores</strong></a>
         <button class="dashboard-option dashboard-logout" id="logout" type="button"><strong>Encerrar sessão</strong></button>
@@ -1212,6 +1217,9 @@ async function renderAdmin(pathname) {
   if (pathname === '/admin/site') return renderSiteSettings();
   if (pathname === '/admin/tags') return renderTagManager();
   if (pathname === '/admin/codice') return renderAdminCodices();
+  if (pathname === '/admin/personagens') return renderCharacterAdmin(app, navigate);
+  const characterEdit = /^\/admin\/personagens\/editar\/([a-z0-9-]+)$/.exec(pathname);
+  if (characterEdit) return renderCharacterEditor(app, characterEdit[1], navigate, openAssetLibrary);
   if (pathname === '/admin/codice/novo') return renderEditor();
   const match = /^\/admin\/codice\/editar\/([a-z0-9-]+)$/.exec(pathname);
   if (match) return renderEditor(match[1]);
@@ -1234,7 +1242,9 @@ async function route() {
   try {
     if (pathname === '/') renderHome();
     else if (pathname === '/codice' || /^\/codice\/[a-z0-9-]+$/.test(pathname)) await renderCodex(pathname.split('/')[2] || null);
-    else if (pathname === '/personagens' || pathname === '/mundo') navigate('/');
+    else if (pathname === '/personagens') await renderCharacterIndex(app);
+    else if (/^\/personagens\/[a-z0-9-]+$/.test(pathname)) await renderCharacterSheet(app, pathname.split('/')[2]);
+    else if (pathname === '/mundo') navigate('/');
     else if (pathname.startsWith('/admin')) {
       const legacyEdit = pathname === '/admin' ? new URLSearchParams(location.search).get('edit') : null;
       if (legacyEdit && /^[a-z0-9-]+$/.test(legacyEdit) && state.isAdmin) {
