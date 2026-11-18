@@ -6,6 +6,7 @@
     "banners/islands",
     "characters",
     "logos",
+    "players",
     "races"
   ],
   "files": [
@@ -56,6 +57,36 @@
       "folder": "logos",
       "url": "/assets/logos/FP.png",
       "bytes": 10156
+    },
+    {
+      "name": "Abaddon_Base.webp",
+      "folder": "players",
+      "url": "/assets/players/Abaddon_Base.webp",
+      "bytes": 906372
+    },
+    {
+      "name": "Camile_Base.webp",
+      "folder": "players",
+      "url": "/assets/players/Camile_Base.webp",
+      "bytes": 624608
+    },
+    {
+      "name": "Rafayel_Base.webp",
+      "folder": "players",
+      "url": "/assets/players/Rafayel_Base.webp",
+      "bytes": 332706
+    },
+    {
+      "name": "Ruhart_Base.webp",
+      "folder": "players",
+      "url": "/assets/players/Ruhart_Base.webp",
+      "bytes": 515420
+    },
+    {
+      "name": "Ze_Base.webp",
+      "folder": "players",
+      "url": "/assets/players/Ze_Base.webp",
+      "bytes": 421618
     },
     {
       "name": "Caprinae.png",
