@@ -1010,3 +1010,23 @@ dialog.image-viewer::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
+
+/* V17: character particles remain visible above the artwork. */
+#character-particle-foreground {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+  isolation: isolate;
+}
+#character-particle-foreground .fx-particles,
+#character-particle-foreground .particle-group {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Collapsible Códice navigation is available only on small screens. */
+.mobile-index-toggle { display: none; }
+.sidebar-mobile-body > label:first-of-type { margin-top: 0; }

@@ -497,7 +497,7 @@ function sceneForPath(pathname) {
 
 function drawSceneEffectsAfterSettings() {
   const backdrop = document.querySelector('#scene-atmosphere');
-  backdrop?.querySelector('.fx-particles')?.replaceChildren();
+  document.querySelector('#site-particle-layer')?.replaceChildren();
   drawSceneEffects();
 }
 
@@ -509,6 +509,7 @@ function sceneAtmosphere() {
     backdrop.setAttribute('aria-hidden', 'true');
     const particleLayer = document.createElement('div');
     particleLayer.className = 'fx-particles';
+    particleLayer.id = 'site-particle-layer';
     backdrop.append(particleLayer);
     document.body.prepend(backdrop);
   }
@@ -540,7 +541,25 @@ function drawSceneEffects() {
     backdrop.dataset.visualKey = visualKey;
   }
   backdrop.dataset.scene = scene;
-  const layer = backdrop.querySelector('.fx-particles');
+  let layer = document.querySelector('#site-particle-layer');
+  if (!layer) {
+    layer = document.createElement('div');
+    layer.id = 'site-particle-layer';
+    layer.className = 'fx-particles';
+  }
+  let foreground = document.querySelector('#character-particle-foreground');
+  if (scene === 'characters') {
+    if (!foreground) {
+      foreground = document.createElement('div');
+      foreground.id = 'character-particle-foreground';
+      foreground.setAttribute('aria-hidden', 'true');
+      document.body.append(foreground);
+    }
+    if (layer.parentElement !== foreground) foreground.append(layer);
+  } else {
+    if (layer.parentElement !== backdrop) backdrop.append(layer);
+    foreground?.remove();
+  }
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let remaining = reduced ? 20 : 180;
   const allowed = new Set();
@@ -675,18 +694,29 @@ function entryList(selectedSlug) {
 }
 
 function sidebar(selectedSlug) {
-  return `<aside class="sidebar" aria-label="Índice do Códice">
-    <label for="search">PESQUISAR</label>
-    <input id="search" type="search" value="${escapeHtml(state.search)}" placeholder="Ilha, nação, palavra-chave…" autocomplete="off">
-    <label for="tag-filter">FILTRAR POR MARCADOR</label>
-    <select id="tag-filter"><option value="">Todos os marcadores</option>
-      ${tagOptions().map(tag => `<option value="${escapeHtml(tag)}" ${state.tag === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}</select>
-    <div class="sidebar-count"><span>VERBETES</span><span id="entry-count">${filteredEntries().length.toString().padStart(2, '0')}</span></div>
-    <ul class="entry-list" id="entry-list">${entryList(selectedSlug)}</ul>
+  return `<aside class="sidebar" aria-label="Índice do Códice" data-mobile-collapsed="${selectedSlug ? 'true' : 'false'}">
+    <button type="button" class="mobile-index-toggle" aria-controls="mobile-codex-index" aria-expanded="${selectedSlug ? 'false' : 'true'}">
+      <span>EXPLORAR CÓDICE</span><span aria-hidden="true" class="mobile-index-chevron">⌄</span>
+    </button>
+    <div id="mobile-codex-index" class="sidebar-mobile-body">
+      <label for="search">PESQUISAR</label>
+      <input id="search" type="search" value="${escapeHtml(state.search)}" placeholder="Ilha, nação, palavra-chave…" autocomplete="off">
+      <label for="tag-filter">FILTRAR POR MARCADOR</label>
+      <select id="tag-filter"><option value="">Todos os marcadores</option>
+        ${tagOptions().map(tag => `<option value="${escapeHtml(tag)}" ${state.tag === tag ? 'selected' : ''}>${escapeHtml(tag)}</option>`).join('')}</select>
+      <div class="sidebar-count"><span>VERBETES</span><span id="entry-count">${filteredEntries().length.toString().padStart(2, '0')}</span></div>
+      <ul class="entry-list" id="entry-list">${entryList(selectedSlug)}</ul>
+    </div>
   </aside>`;
 }
 
 function bindSidebar(selectedSlug) {
+  document.querySelector('.mobile-index-toggle')?.addEventListener('click', event => {
+    const parent = event.currentTarget.closest('.sidebar');
+    const collapsed = parent.dataset.mobileCollapsed !== 'true';
+    parent.dataset.mobileCollapsed = String(collapsed);
+    event.currentTarget.setAttribute('aria-expanded', String(!collapsed));
+  });
   document.querySelector('#search')?.addEventListener('input', event => {
     state.search = event.target.value;
     document.querySelector('#entry-list').innerHTML = entryList(selectedSlug);
