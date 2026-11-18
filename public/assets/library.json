@@ -2,9 +2,8 @@
   "folders": [
     "",
     "backgrounds",
-    "banners",
-    "banners/islands",
     "characters",
+    "islands",
     "logos",
     "players",
     "races"
@@ -35,9 +34,15 @@
       "bytes": 277729
     },
     {
+      "name": "Avalon.webp",
+      "folder": "islands",
+      "url": "/assets/islands/Avalon.webp",
+      "bytes": 714318
+    },
+    {
       "name": "Union.webp",
-      "folder": "banners/islands",
-      "url": "/assets/banners/islands/Union.webp",
+      "folder": "islands",
+      "url": "/assets/islands/Union.webp",
       "bytes": 500102
     },
     {
@@ -89,10 +94,10 @@
       "bytes": 421618
     },
     {
-      "name": "Caprinae.png",
+      "name": "Caprinae.webp",
       "folder": "races",
-      "url": "/assets/races/Caprinae.png",
-      "bytes": 1428151
+      "url": "/assets/races/Caprinae.webp",
+      "bytes": 1386560
     }
   ]
 }
