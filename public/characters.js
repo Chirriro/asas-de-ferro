@@ -51,7 +51,7 @@ function applySpriteFrame(frame, transform) {
   frame.style.setProperty('--character-sprite-x', `${x}%`);
   frame.style.setProperty('--character-sprite-y', `${y}%`);
   const image = frame.querySelector('img.character-portrait');
-  if (image) image.style.transform = `translate(${x - 6}%, ${y - 3}%) scale(${size / 100})`;
+  if (image) image.style.transform = `translate(-50%, -50%) scale(${size / 100})`;
 }
 function back(label, href) { return `<a href="${href}" class="return-link" data-nav><span aria-hidden="true">←</span> ${label}</a>`; }
 function fieldTitle(value) { return `<h2 class="character-title">${value}</h2>`; }
@@ -61,11 +61,11 @@ export async function renderCharacterIndex(app) {
   const entries = await getRoster();
   app.innerHTML = `<div class="scene inner-scene character-scene"><div class="inner-page">
     ${back('MENU PRINCIPAL', '/')}
-    <div class="panel-heading character-heading"><span class="overline">REGISTROS DA CAMPANHA</span><h1>Personagens</h1></div>
+    <div class="panel-heading character-heading"><h1>Personagens</h1></div>
     ${entries.length ? `<div class="character-roster">${entries.map(c => `<a data-nav href="/personagens/${esc(c.slug)}" class="character-roster-card">
       <div class="character-roster-art">${portrait(c.sprite, c.name)}</div>
       <div class="character-roster-info"><span class="overline">NÍVEL ${level(c.level)}</span><h2>${esc(c.name)}</h2>
-        <p>${esc(c.classes.map(k => k.name).join(' · '))}</p></div>
+        ${c.cardSubtitle ? `<p>${esc(c.cardSubtitle)}</p>` : ''}</div>
     </a>`).join('')}</div>` : '<div class="character-empty">Nenhum personagem disponível.</div>'}
   </div></div>`;
 }
@@ -138,7 +138,7 @@ export async function renderCharacterAdmin(app, navigate) {
       <input id="character-json-files" type="file" accept=".json,application/json" multiple>
       <span id="character-import-status" role="status"></span></div>
     <div class="admin-entry-list">${entries.map(c => `<a href="/admin/personagens/editar/${esc(c.slug)}" data-nav>
-      <span><strong>${esc(c.name)}</strong><small>Nível ${level(c.level)} · ${esc(c.classes.map(cls=>cls.name).join(' / '))}</small></span>
+      <span><strong>${esc(c.name)}</strong><small>Nível ${level(c.level)}${c.cardSubtitle ? ` · ${esc(c.cardSubtitle)}` : ''}</small></span>
       <span>CONFIGURAR →</span></a>`).join('') || '<p>Nenhum personagem importado.</p>'}</div>
   </div></div>`;
   app.querySelector('#character-json-files').addEventListener('change', async event => {
@@ -170,6 +170,10 @@ export async function renderCharacterEditor(app, slug, navigate, openAssetLibrar
     ${back('GERENCIAR PERSONAGENS', '/admin/personagens')}
     <div class="panel-heading character-heading"><span class="overline">CONFIGURAÇÃO DO PERSONAGEM</span><h1>${esc(p.name)}</h1></div>
     <form id="character-config-form" class="character-config-form">
+      <div class="character-card-caption">
+        <label for="character-card-subtitle">TEXTO DA SELEÇÃO</label>
+        <input id="character-card-subtitle" type="text" maxlength="160" value="${esc(p.cardSubtitle || '')}">
+      </div>
       <div class="character-admin-sprite">
         <div class="character-editor-frame" id="character-sprite-preview" ${frameStyle(p.spriteTransform)}>${portrait(p.sprite, p.name, 'character-portrait')}</div>
         <div class="character-editor-controls">
@@ -227,8 +231,11 @@ export async function renderCharacterEditor(app, slug, navigate, openAssetLibrar
     }));
     try {
       const requestedFrame = getFrame();
-      const saved = await request('/' + slug, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sprite: spriteInput.value, spriteTransform: requestedFrame, maxOverrides: overrides }) });
+      const saved = await request('/' + slug, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sprite: spriteInput.value, spriteTransform: requestedFrame, cardSubtitle: app.querySelector('#character-card-subtitle').value, maxOverrides: overrides }) });
       const confirmed = saved.character?.spriteTransform;
+      if (saved.character?.cardSubtitle !== app.querySelector('#character-card-subtitle').value.trim()) {
+        throw new Error('Servidor não confirmou o texto da seleção. Atualize os arquivos de backend do V18.');
+      }
       if (!confirmed || ['size', 'x', 'y'].some(key => confirmed[key] !== requestedFrame[key])) {
         throw new Error('Servidor não confirmou tamanho/posição. Instale os dois arquivos de backend deste pacote.');
       }
@@ -357,20 +364,16 @@ export async function downloadCharacterPNG(profile) {
       if (art) {
         const artX = 1250, artY = 79, artW = WIDTH - artX - 58, artH = headerBottom - 80;
         const frame = spriteFrame(profile.spriteTransform);
-        // Match the web sprite frame: 117% width, 124% height, cover and top-biased crop.
-        const frameW = artW * 1.17;
-        const frameH = artH * 1.24;
-        const cover = Math.max(frameW / art.naturalWidth, frameH / art.naturalHeight);
-        const imageW = art.naturalWidth * cover;
-        const imageH = art.naturalHeight * cover;
+        // Use original image proportions; zooming out reveals previously cropped artwork.
+        const naturalRatio = art.naturalWidth / art.naturalHeight;
         const zoom = frame.size / 100;
-        const offsetX = (-0.06 + frame.x / 100) * frameW;
-        const offsetY = (-0.03 + frame.y / 100) * frameH;
-        const imageX = artX + offsetX + frameW / 2 + zoom * ((frameW - imageW) / 2 - frameW / 2);
-        const imageY = artY + offsetY + frameH / 2 + zoom * ((frameH - imageH) * 0.12 - frameH / 2);
+        const imageH = artH * 1.24 * zoom;
+        const imageW = imageH * naturalRatio;
+        const centerX = artX + artW * (0.44 + frame.x / 100);
+        const centerY = artY + artH * (0.47 + frame.y / 100);
         ctx.save();
         ctx.beginPath(); ctx.rect(artX, artY, artW, artH); ctx.clip();
-        ctx.drawImage(art, imageX, imageY, imageW * zoom, imageH * zoom);
+        ctx.drawImage(art, centerX - imageW / 2, centerY - imageH / 2, imageW, imageH);
         ctx.restore();
         const fade = ctx.createLinearGradient(artX - 60, 0, artX + 560, 0);
         fade.addColorStop(0, paper);

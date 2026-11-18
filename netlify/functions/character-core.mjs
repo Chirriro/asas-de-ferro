@@ -99,7 +99,7 @@ export function importActor(raw) {
     slug, name, level: bounded(raw.system.level?.value, 1, 100),
     sourceId: sourceIdentity(raw),
     attributes, affinities, classes, skills, peculiarities,
-    sprite: '', spriteTransform: { ...defaultSpriteTransform }, maxOverrides: { hp: null, mp: null, ip: null },
+    sprite: '', cardSubtitle: '', spriteTransform: { ...defaultSpriteTransform }, maxOverrides: { hp: null, mp: null, ip: null },
     updatedAt: new Date().toISOString(),
   };
   profile.resources = resourcesFromActor(raw, classes, peculiarities);
@@ -117,6 +117,8 @@ export function applyCharacterSettings(profile, data) {
     else if (!Number.isInteger(value) || value < 0 || value > 9999) throw new Error('Valor máximo inválido.');
     else overrides[key] = value;
   }
+  const cardSubtitle = data.cardSubtitle === undefined ? (profile.cardSubtitle || '') : data.cardSubtitle;
+  if (typeof cardSubtitle !== 'string' || cardSubtitle.length > 160) throw new Error('Texto da seleção inválido.');
   let spriteTransform = normalizeSpriteTransform(profile.spriteTransform);
   if (data.spriteTransform !== undefined) {
     const value = data.spriteTransform;
@@ -127,7 +129,7 @@ export function applyCharacterSettings(profile, data) {
     }
     spriteTransform = { size: value.size, x: value.x, y: value.y };
   }
-  return { ...profile, sprite, spriteTransform, maxOverrides: overrides, updatedAt: new Date().toISOString() };
+  return { ...profile, sprite, cardSubtitle: cardSubtitle.trim(), spriteTransform, maxOverrides: overrides, updatedAt: new Date().toISOString() };
 }
 
 export function displayCharacter(profile) {
@@ -135,7 +137,7 @@ export function displayCharacter(profile) {
     ...profile.resources[key], max: profile.maxOverrides?.[key] ?? profile.resources[key].max,
   }]));
   return {
-    slug: profile.slug, name: profile.name, level: profile.level, sprite: profile.sprite || '',
+    slug: profile.slug, name: profile.name, level: profile.level, sprite: profile.sprite || '', cardSubtitle: profile.cardSubtitle || '',
     spriteTransform: normalizeSpriteTransform(profile.spriteTransform),
     maxOverrides: profile.maxOverrides || { hp:null, mp:null, ip:null },
     resources, attributes: profile.attributes, affinities: profile.affinities,

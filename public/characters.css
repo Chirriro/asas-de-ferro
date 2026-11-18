@@ -347,3 +347,26 @@
 @media (prefers-reduced-motion: reduce) {
   .character-editor-frame .character-portrait { transition: none; }
 }
+
+/* Keep the original sprite intact when changing scale. */
+.character-sheet .character-sprite-wrap .character-portrait,
+.character-editor-frame .character-portrait {
+  position: absolute;
+  left: calc(44% + var(--character-sprite-x, 0%));
+  top: calc(47% + var(--character-sprite-y, 0%));
+  width: auto;
+  height: 124%;
+  max-width: none;
+  max-height: none;
+  object-fit: contain;
+  object-position: center;
+  transform: translate(-50%, -50%) scale(var(--character-sprite-size, 1));
+  transform-origin: center center;
+}
+.character-card-caption { margin-bottom: 22px; }
+.character-card-caption label { display: block; margin-bottom: 8px; color: var(--theme-light); font: 600 17px Antonio, sans-serif; }
+.character-card-caption input { width: 100%; max-width: 700px; }
+
+/* Character level labels follow the active page theme. */
+.character-roster-info .overline,
+.character-admin-page .character-heading .overline { color: var(--theme-light); }
