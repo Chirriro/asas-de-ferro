@@ -71,6 +71,7 @@ export default async function characters(request) {
       if (old) {
         profile.slug = old.slug;
         profile.sprite = old.sprite || '';
+        profile.spriteTransform = old.spriteTransform || { size: 100, x: 0, y: 0 };
         profile.maxOverrides = old.maxOverrides || profile.maxOverrides;
       }
       await db.setJSON(`character/${profile.slug}`, profile);
@@ -97,7 +98,7 @@ export default async function characters(request) {
     return json({ error: 'Rota não encontrada.' }, 404);
   } catch (error) {
     if (error instanceof SyntaxError) return json({ error: 'O arquivo não contém JSON válido.' }, 400);
-    if (error?.message && /^(Arquivo inválido|O personagem|Não foi possível|Imagem inválida|Dados inválidos|Valor máximo inválido)/.test(error.message)) return json({ error: error.message }, 400);
+    if (error?.message && /^(Arquivo inválido|O personagem|Não foi possível|Imagem inválida|Dados inválidos|Valor máximo inválido|Enquadramento do sprite inválido)/.test(error.message)) return json({ error: error.message }, 400);
     console.error('Character API error', error);
     return json({ error: 'Erro interno ao processar personagem.' }, 500);
   }

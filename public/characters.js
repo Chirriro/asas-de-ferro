@@ -32,6 +32,17 @@ const sprite = path => typeof path === 'string' && /^\/assets\/[a-zA-Z0-9%_.~()/
 function portrait(path, alt, cls = 'character-portrait') {
   return sprite(path) ? `<img src="${esc(path)}" class="${cls}" alt="${esc(alt)}" draggable="false">` : '<div class="character-no-sprite" aria-hidden="true">◇</div>';
 }
+const spriteDefaults = { size: 100, x: 0, y: 0 };
+function spriteFrame(value) {
+  const input = value && typeof value === 'object' ? value : {};
+  const safe = (key, low, high, fallback) => Number.isFinite(input[key])
+    ? Math.min(high, Math.max(low, Math.round(input[key]))) : fallback;
+  return { size: safe('size', 50, 250, 100), x: safe('x', -60, 60, 0), y: safe('y', -60, 60, 0) };
+}
+function frameStyle(value) {
+  const { size, x, y } = spriteFrame(value);
+  return `style="--character-sprite-size:${size / 100};--character-sprite-x:${x}%;--character-sprite-y:${y}%"`;
+}
 function back(label, href) { return `<a href="${href}" class="return-link" data-nav><span aria-hidden="true">←</span> ${label}</a>`; }
 function fieldTitle(value) { return `<h2 class="character-title">${value}</h2>`; }
 const affinityText = amount => amount <= -2 ? 'Muito vulnerável' : amount === -1 ? 'Vulnerável' : amount === 0 ? 'Normal' : amount === 1 ? 'Resistente' : amount === 2 ? 'Imune' : 'Absorção';
@@ -90,7 +101,7 @@ export async function renderCharacterSheet(app, slug) {
           ${p.peculiarities.length ? `<div class="character-peculiarities">${p.peculiarities.map(item => `<section><h3>${esc(item.name)}</h3>${item.description ? `<p>${esc(item.description)}</p>` : ''}</section>`).join('')}</div>` : '<p>Nenhuma peculiaridade registrada.</p>'}
         </section>
       </div>
-      <aside class="character-sprite-wrap" aria-label="Ilustração de ${esc(p.name)}">${portrait(p.sprite, p.name)}</aside>
+      <aside class="character-sprite-wrap" ${frameStyle(p.spriteTransform)} aria-label="Ilustração de ${esc(p.name)}">${portrait(p.sprite, p.name)}</aside>
     </div>
     <div class="character-download-row"><button class="ui-button" type="button" id="character-download">BAIXAR FICHA PNG</button><span id="character-download-status" role="status"></span></div>
   </div></div>`;
@@ -148,9 +159,21 @@ export async function renderCharacterEditor(app, slug, navigate, openAssetLibrar
     ${back('GERENCIAR PERSONAGENS', '/admin/personagens')}
     <div class="panel-heading character-heading"><span class="overline">CONFIGURAÇÃO DO PERSONAGEM</span><h1>${esc(p.name)}</h1></div>
     <form id="character-config-form" class="character-config-form">
-      <div class="character-admin-sprite">${portrait(p.sprite, p.name, 'character-portrait')}
-      <div><label for="character-sprite">SPRITE</label><input id="character-sprite" type="text" readonly value="${esc(p.sprite || '')}" placeholder="Sem imagem">
-      <div class="character-config-buttons"><button type="button" class="ui-button secondary" id="character-pick">BIBLIOTECA</button><button type="button" class="ui-button secondary" id="character-clear">LIMPAR</button></div></div></div>
+      <div class="character-admin-sprite">
+        <div class="character-editor-frame" id="character-sprite-preview" ${frameStyle(p.spriteTransform)}>${portrait(p.sprite, p.name, 'character-portrait')}</div>
+        <div class="character-editor-controls">
+          <label for="character-sprite">SPRITE</label><input id="character-sprite" type="text" readonly value="${esc(p.sprite || '')}" placeholder="Sem imagem">
+          <div class="character-config-buttons"><button type="button" class="ui-button secondary" id="character-pick">BIBLIOTECA</button><button type="button" class="ui-button secondary" id="character-clear">LIMPAR</button></div>
+          <div class="character-sprite-controls">
+            ${[
+              ['size', 'TAMANHO', 50, 250, '%'],
+              ['x', 'POSIÇÃO HORIZONTAL', -60, 60, '%'],
+              ['y', 'POSIÇÃO VERTICAL', -60, 60, '%'],
+            ].map(([key, label, min, max, suffix]) => `<div class="character-sprite-setting"><div class="character-sprite-setting-heading"><label for="sprite-${key}">${label}</label><output id="sprite-${key}-value" for="sprite-${key}">${spriteFrame(p.spriteTransform)[key]}${suffix}</output></div><input type="range" id="sprite-${key}" min="${min}" max="${max}" step="1" value="${spriteFrame(p.spriteTransform)[key]}"></div>`).join('')}
+            <button type="button" class="ui-button secondary" id="sprite-reset">REDEFINIR ENQUADRAMENTO</button>
+          </div>
+        </div>
+      </div>
       <h2>PV / PM / PI MÁXIMOS</h2>
       <div class="character-config-max">${['hp','mp','ip'].map(key=>`<div><label for="character-max-${key}">${key.toUpperCase()}</label>
         <input id="character-max-${key}" type="number" min="0" max="9999" placeholder="Calculado: ${level(p.resources[key]?.calculated)}" value="${p.maxOverrides?.[key] ?? ''}"></div>`).join('')}</div>
@@ -160,10 +183,30 @@ export async function renderCharacterEditor(app, slug, navigate, openAssetLibrar
     <p><a class="ui-button secondary" data-nav href="/personagens/${esc(p.slug)}">VER FICHA PÚBLICA</a></p>
   </div></div>`;
   const spriteInput = app.querySelector('#character-sprite');
-  const setSprite = path => { spriteInput.value = path; const preview = app.querySelector('.character-admin-sprite .character-portrait, .character-admin-sprite .character-no-sprite'); if (preview) {
-    if (path) preview.outerHTML = `<img class="character-portrait" draggable="false" src="${esc(path)}" alt="Prévia">`;
-    else preview.outerHTML = '<div class="character-no-sprite">◇</div>';
-  } };
+  const previewFrame = app.querySelector('#character-sprite-preview');
+  const getFrame = () => ({
+    size: Number(app.querySelector('#sprite-size').value),
+    x: Number(app.querySelector('#sprite-x').value),
+    y: Number(app.querySelector('#sprite-y').value),
+  });
+  const updateFrame = () => {
+    const value = getFrame();
+    previewFrame.style.setProperty('--character-sprite-size', String(value.size / 100));
+    previewFrame.style.setProperty('--character-sprite-x', `${value.x}%`);
+    previewFrame.style.setProperty('--character-sprite-y', `${value.y}%`);
+    for (const [key, amount] of Object.entries(value)) app.querySelector(`#sprite-${key}-value`).textContent = `${amount}%`;
+  };
+  for (const key of ['size', 'x', 'y']) app.querySelector(`#sprite-${key}`).addEventListener('input', updateFrame);
+  app.querySelector('#sprite-reset').addEventListener('click', () => {
+    for (const [key, value] of Object.entries(spriteDefaults)) app.querySelector(`#sprite-${key}`).value = value;
+    updateFrame();
+  });
+  const setSprite = path => {
+    spriteInput.value = path;
+    previewFrame.innerHTML = path
+      ? `<img class="character-portrait" draggable="false" src="${esc(path)}" alt="Prévia">`
+      : '<div class="character-no-sprite">◇</div>';
+  };
   app.querySelector('#character-pick').addEventListener('click', () => openAssetLibrary(setSprite));
   app.querySelector('#character-clear').addEventListener('click', () => setSprite(''));
   app.querySelector('#character-config-form').addEventListener('submit', async event => {
@@ -173,7 +216,7 @@ export async function renderCharacterEditor(app, slug, navigate, openAssetLibrar
       return [key, value === '' ? null : Number(value)];
     }));
     try {
-      await request('/' + slug, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sprite: spriteInput.value, maxOverrides: overrides }) });
+      await request('/' + slug, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sprite: spriteInput.value, spriteTransform: getFrame(), maxOverrides: overrides }) });
       invalidateCharacters();
       app.querySelector('#notice').textContent = 'Alterações salvas.';
     } catch (error) { app.querySelector('#notice').textContent = error.message; }
@@ -298,14 +341,21 @@ export async function downloadCharacterPNG(profile) {
       ctx.fillRect(17, 80, WIDTH - 17, headerBottom - 85);
       if (art) {
         const artX = 1250, artY = 79, artW = WIDTH - artX - 58, artH = headerBottom - 80;
-        const ratio = Math.max(artW / art.naturalWidth, artH / art.naturalHeight);
-        const sourceW = Math.min(art.naturalWidth, artW / ratio);
-        const sourceH = Math.min(art.naturalHeight, artH / ratio);
-        const sourceX = (art.naturalWidth - sourceW) / 2;
-        const sourceY = Math.max(0, (art.naturalHeight - sourceH) * 0.11);
+        const frame = spriteFrame(profile.spriteTransform);
+        // Match the web sprite frame: 117% width, 124% height, cover and top-biased crop.
+        const frameW = artW * 1.17;
+        const frameH = artH * 1.24;
+        const cover = Math.max(frameW / art.naturalWidth, frameH / art.naturalHeight);
+        const imageW = art.naturalWidth * cover;
+        const imageH = art.naturalHeight * cover;
+        const zoom = frame.size / 100;
+        const offsetX = (-0.06 + frame.x / 100) * frameW;
+        const offsetY = (-0.03 + frame.y / 100) * frameH;
+        const imageX = artX + offsetX + frameW / 2 + zoom * ((frameW - imageW) / 2 - frameW / 2);
+        const imageY = artY + offsetY + frameH / 2 + zoom * ((frameH - imageH) * 0.12 - frameH / 2);
         ctx.save();
         ctx.beginPath(); ctx.rect(artX, artY, artW, artH); ctx.clip();
-        ctx.drawImage(art, sourceX, sourceY, sourceW, sourceH, artX, artY, artW, artH);
+        ctx.drawImage(art, imageX, imageY, imageW * zoom, imageH * zoom);
         ctx.restore();
         const fade = ctx.createLinearGradient(artX - 60, 0, artX + 560, 0);
         fade.addColorStop(0, paper);

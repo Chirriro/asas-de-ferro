@@ -22,6 +22,18 @@ export function validateSprite(sprite) {
   return sprite === '' || (validAssetPath(sprite) && /\.(?:png|jpe?g|webp|avif|gif)$/i.test(sprite));
 }
 
+// Sprite framing is shared by the web view and PNG exporter.
+export const defaultSpriteTransform = Object.freeze({ size: 100, x: 0, y: 0 });
+
+export function normalizeSpriteTransform(value) {
+  const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return {
+    size: Number.isFinite(input.size) ? Math.max(50, Math.min(250, Math.round(input.size))) : 100,
+    x: Number.isFinite(input.x) ? Math.max(-60, Math.min(60, Math.round(input.x))) : 0,
+    y: Number.isFinite(input.y) ? Math.max(-60, Math.min(60, Math.round(input.y))) : 0,
+  };
+}
+
 export function sourceIdentity(raw) {
   const id = raw?._stats?.exportSource;
   if (typeof id?.worldId !== 'string' || !/^[a-z0-9_-]{1,80}$/i.test(id.worldId)) return '';
@@ -87,7 +99,7 @@ export function importActor(raw) {
     slug, name, level: bounded(raw.system.level?.value, 1, 100),
     sourceId: sourceIdentity(raw),
     attributes, affinities, classes, skills, peculiarities,
-    sprite: '', maxOverrides: { hp: null, mp: null, ip: null },
+    sprite: '', spriteTransform: { ...defaultSpriteTransform }, maxOverrides: { hp: null, mp: null, ip: null },
     updatedAt: new Date().toISOString(),
   };
   profile.resources = resourcesFromActor(raw, classes, peculiarities);
@@ -105,7 +117,17 @@ export function applyCharacterSettings(profile, data) {
     else if (!Number.isInteger(value) || value < 0 || value > 9999) throw new Error('Valor máximo inválido.');
     else overrides[key] = value;
   }
-  return { ...profile, sprite, maxOverrides: overrides, updatedAt: new Date().toISOString() };
+  let spriteTransform = normalizeSpriteTransform(profile.spriteTransform);
+  if (data.spriteTransform !== undefined) {
+    const value = data.spriteTransform;
+    if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      !['size', 'x', 'y'].every(key => Number.isInteger(value[key])) ||
+      value.size < 50 || value.size > 250 || Math.abs(value.x) > 60 || Math.abs(value.y) > 60) {
+      throw new Error('Enquadramento do sprite inválido.');
+    }
+    spriteTransform = { size: value.size, x: value.x, y: value.y };
+  }
+  return { ...profile, sprite, spriteTransform, maxOverrides: overrides, updatedAt: new Date().toISOString() };
 }
 
 export function displayCharacter(profile) {
@@ -114,6 +136,7 @@ export function displayCharacter(profile) {
   }]));
   return {
     slug: profile.slug, name: profile.name, level: profile.level, sprite: profile.sprite || '',
+    spriteTransform: normalizeSpriteTransform(profile.spriteTransform),
     maxOverrides: profile.maxOverrides || { hp:null, mp:null, ip:null },
     resources, attributes: profile.attributes, affinities: profile.affinities,
     classes: (profile.classes || []).map(c => ({ name: c.name, key: c.key, level: c.level })),
