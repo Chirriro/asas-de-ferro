@@ -40,10 +40,6 @@ function spriteFrame(value) {
     ? Math.min(high, Math.max(low, Math.round(input[key]))) : fallback;
   return { size: safe('size', 50, 250, 100), x: safe('x', -60, 60, 0), y: safe('y', -60, 60, 0) };
 }
-function frameStyle(value) {
-  const { size, x, y } = spriteFrame(value);
-  return `style="--character-sprite-size:${size / 100};--character-sprite-x:${x}%;--character-sprite-y:${y}%"`;
-}
 function applySpriteFrame(frame, transform) {
   if (!frame) return;
   const { size, x, y } = spriteFrame(transform);
@@ -111,7 +107,7 @@ export async function renderCharacterSheet(app, slug) {
           ${p.peculiarities.length ? `<div class="character-peculiarities">${p.peculiarities.map(item => `<section><h3>${esc(item.name)}</h3>${item.description ? `<p>${esc(item.description)}</p>` : ''}</section>`).join('')}</div>` : '<p>Nenhuma peculiaridade registrada.</p>'}
         </section>
       </div>
-      <aside class="character-sprite-wrap" ${frameStyle(p.spriteTransform)} aria-label="Ilustração de ${esc(p.name)}">${portrait(p.sprite, p.name)}</aside>
+      <aside class="character-sprite-wrap" aria-label="Ilustração de ${esc(p.name)}">${portrait(p.sprite, p.name)}</aside>
     </div>
     <div class="character-download-row"><button class="ui-button" type="button" id="character-download">BAIXAR FICHA PNG</button><span id="character-download-status" role="status"></span></div>
   </div></div>`;
@@ -175,7 +171,7 @@ export async function renderCharacterEditor(app, slug, navigate, openAssetLibrar
         <input id="character-card-subtitle" type="text" maxlength="160" value="${esc(p.cardSubtitle || '')}">
       </div>
       <div class="character-admin-sprite">
-        <div class="character-editor-frame" id="character-sprite-preview" ${frameStyle(p.spriteTransform)}>${portrait(p.sprite, p.name, 'character-portrait')}</div>
+        <div class="character-editor-frame" id="character-sprite-preview">${portrait(p.sprite, p.name, 'character-portrait')}</div>
         <div class="character-editor-controls">
           <label for="character-sprite">SPRITE</label><input id="character-sprite" type="text" readonly value="${esc(p.sprite || '')}" placeholder="Sem imagem">
           <div class="character-config-buttons"><button type="button" class="ui-button secondary" id="character-pick">BIBLIOTECA</button><button type="button" class="ui-button secondary" id="character-clear">LIMPAR</button></div>
@@ -209,6 +205,7 @@ export async function renderCharacterEditor(app, slug, navigate, openAssetLibrar
     applySpriteFrame(previewFrame, value);
     for (const [key, amount] of Object.entries(value)) app.querySelector(`#sprite-${key}-value`).textContent = `${amount}%`;
   };
+  updateFrame();
   for (const key of ['size', 'x', 'y']) app.querySelector(`#sprite-${key}`).addEventListener('input', updateFrame);
   app.querySelector('#sprite-reset').addEventListener('click', () => {
     for (const [key, value] of Object.entries(spriteDefaults)) app.querySelector(`#sprite-${key}`).value = value;

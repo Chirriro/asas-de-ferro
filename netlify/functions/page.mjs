@@ -53,6 +53,7 @@ export async function htmlPage(request, settings, codex = null) {
     '<link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;500;600;700&family=Cinzel:wght@400;500;600;700&family=PT+Sans+Narrow:wght@400;700&display=swap" rel="stylesheet">',
     '<link rel="stylesheet" href="/styles.css">',
     '<link rel="stylesheet" href="/characters.css">',
+    '<link rel="stylesheet" href="/mobile.css" media="(max-width: 1100px)">',
     '<script type="module" src="/app.js"></script>',
   ];
   return `<!doctype html><html lang="pt-BR"><head>${head.join('\n')}</head><body><a class="skip-link" href="#app">Ir para o conteúdo</a><main id="app" tabindex="-1"></main></body></html>`;
